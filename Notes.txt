@@ -1,0 +1,18 @@
+- read musicxml---each voice is an ARRAY OF PITCHES with duration = shortest note
+  - read one voice only
+  - include info on whether pitch is TIED (or use separate array)
+- second voice is an array with same starting point, shifted back
+  - check counterpoint happens after full texture is generated
+- transposition
+  - have list of pitches in major & minor key
+  - transpose the list according to key
+  - find next number down for each note transposed
+  - (later) chromatic notes---dont use list
+- check counterpoint---compare each item in the two arrays---check for legal intervals
+  - one array labeled as bass---"if bass, mark as illegal"
+  - if dissonant, check next interval(s). check leaps/steps. have specific formulas. probably nested if statements
+  - dont flat out reject---under x number of illegalities is allowed
+  - WAIT maybe make array of differences (intervals between the two), then make library of allowable interval sequences (still need to check source for parallels etc)
+    - remove duplicates in ORIGINAL arrays (if both arrays repeat)
+- if 3 or more voices---check each pair
+- write back into musicxml---add generated voices
