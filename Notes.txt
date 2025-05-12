@@ -1,3 +1,7 @@
+INPUT REQUIREMENTS
+- Each measure must have the same key signature
+
+PLANNING
 - read musicxml---each voice is an ARRAY OF PITCHES with duration = shortest note
   - read one voice only
   - include info on whether pitch is TIED (or use separate array)
@@ -14,5 +18,22 @@
   - dont flat out reject---under x number of illegalities is allowed
   - WAIT maybe make array of differences (intervals between the two), then make library of allowable interval sequences (still need to check source for parallels etc)
     - remove duplicates in ORIGINAL arrays (if both arrays repeat)
+    - construct rhythmic hierarchy array (LATER bc u then need to consider different rhythmic possibilities. maybe j shift by one cycle)
 - if 3 or more voices---check each pair
 - write back into musicxml---add generated voices
+
+classes
+- all voices: "texture"
+- two voices: "pair"
+
+make texture in xml?
+
+
+
+
+git clone https://github.com/webern/mx.git
+cd mx && mkdir build && cd build
+cmake .. && cmake --build . --target all
+
+https://github.com/webern/mx
+https://learn.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio?view=msvc-170
