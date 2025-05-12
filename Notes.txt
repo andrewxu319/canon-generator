@@ -37,3 +37,7 @@ cmake .. && cmake --build . --target all
 
 https://github.com/webern/mx
 https://learn.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio?view=msvc-170
+
+
+
+1 tick = 1 beat
