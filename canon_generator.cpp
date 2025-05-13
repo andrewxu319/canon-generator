@@ -3,6 +3,7 @@
 #include "settings.h"
 #include "file_reader.h"
 #include "file_writer.h"
+#include "sonority.h"
 #include "counterpoint_checker.h"
 #include "mx/api/ScoreData.h"
 
@@ -11,6 +12,7 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <algorithm>
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
 
@@ -259,84 +261,76 @@ const mx::api::ScoreData create_output_score(mx::api::ScoreData score, const std
 	return score; // temp
 }
 
-const std::pair<int, bool> interval (const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const bool number_signed = false){ // Second (bool)---tritone. If signed, note_2 higher = positive
-	if (note_1.isRest || note_2.isRest) {
-		return { -1000, false }; // -1000 = rest code
+const int second_highest_notes_by_tick_lengths(const std::vector<std::vector<mx::api::NoteData>>& notes_by_tick_for_all_voices) {
+	// Get second highest notes-by-tick length (need two voices to counterpoint)
+	std::vector<int> notes_by_tick_lengths{};
+	for (const Voice& voice : notes_by_tick_for_all_voices) {
+		notes_by_tick_lengths.push_back(voice.size());
 	}
-
-	std::pair<int, bool> output{};
-	
-	const int signed_number{ (static_cast<int>(note_2.pitchData.step) + 7 * (note_2.pitchData.octave - note_1.pitchData.octave)) - static_cast<int>(note_1.pitchData.step) };
-
-	// Check for tritones
-	const std::map<mx::api::Step, int> note_codes { // Map each white note to a number, use alter to increment the number
-		{ mx::api::Step::c, 0 },
-		{ mx::api::Step::d, 2 },
-		{ mx::api::Step::e, 4 },
-		{ mx::api::Step::f, 5 },
-		{ mx::api::Step::g, 7 },
-		{ mx::api::Step::a, 9 },
-		{ mx::api::Step::b, 11 },
-	};
-	const int note_1_code{ (note_codes.at(note_1.pitchData.step) + note_1.pitchData.alter + 12) % 12 }; // Add 12 to avoid negative values (C flat)
-	const int note_2_code{ (note_codes.at(note_2.pitchData.step) + note_2.pitchData.alter + 12) % 12 };
-	if (abs(note_2_code - note_1_code) == 6) {
-		output = { signed_number, true};
-	}
-	else {
-		output = { signed_number, false };
-	}
-
-	if (number_signed) {
-		output.first = abs(output.first);
-	}
-	return output;
+	std::sort(notes_by_tick_lengths.begin(), notes_by_tick_lengths.end(), std::greater<int>());
+	return notes_by_tick_lengths.at(1);
 }
 
-class Sonority {
-public:
-	Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const int rhythmic_hierarchy)
-		: m_note_1{ note_1 }, m_note_2{ note_2 }, m_rhythmic_hierarchy{ rhythmic_hierarchy } {
-		m_interval = interval(m_note_1, m_note_2);
+const std::vector<int> create_rhythmic_hierarchy_array(const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) {
+	std::vector<int> rhythmic_hierarchy(ticks_per_measure); // All 0
+
+	// CLEAN UP ALL THIS CODE---MAKE FUNCTION "increment_every()"
+
+	// Simple meter
+	if (time_signature.beatType == 4) {
+		for (int division_size{ 2 }; division_size <= ticks_per_measure; division_size *= 2) {
+			if (ticks_per_measure % division_size == 0) {
+				for (int i{ 0 }; i < ticks_per_measure; ++i) {
+					if (i % division_size == 0) {
+						++rhythmic_hierarchy.at(i);
+					}
+				}
+			}
+			else if (ticks_per_measure % 3 == 0) {
+				for (int i{ 0 }; i < ticks_per_measure; ++i) {
+					if (i % (3 * division_size / 2) == 0) {
+						++rhythmic_hierarchy.at(i);
+					}
+				}
+			}
+			else {
+				break;
+			}
+		}
 	}
 
-	void build_movement_data(Sonority& next_sonority){
-		m_note_1_movement = interval(next_sonority.get_note_1(), get_note_1(), true).first; // Don't care about tritone leaps
-		m_note_2_movement = interval(next_sonority.get_note_2(), get_note_2(), true).first;
+	// Compound meter
+	else if (time_signature.beatType == 8) {
+		const int ticks_per_eighth{ ticks_per_measure / time_signature.beats };
+		for (int division_size{ 2 }; division_size <= ticks_per_eighth; division_size *= 2) { // Subdivide anything smaller than 8 into two
+			for (int i{ 0 }; i < ticks_per_measure; ++i) {
+				if (i % division_size == 0) {
+					++rhythmic_hierarchy.at(i);
+				}
+			}
+		}
+		for (int division_size{ ticks_per_eighth }; division_size < ticks_per_measure;) { // Eighth notes and 9/8
+			if ((ticks_per_measure / division_size) % 3 == 0) {
+				division_size *= 3;
+				for (int i{ 0 }; i < ticks_per_measure; ++i) {
+					if (i % (division_size) == 0) {
+						++rhythmic_hierarchy.at(i);
+					}
+				}
+			}
+			else if ((ticks_per_measure / division_size) % 2 == 0) {
+				division_size *= 2;
+				for (int i{ 0 }; i < ticks_per_measure; ++i) {
+					if (i % (division_size) == 0) {
+						++rhythmic_hierarchy.at(i);
+					}
+				}
+			}
+		}
 	}
 
-	const mx::api::NoteData& get_note_1() {
-		return m_note_1;
-	}
-
-	const mx::api::NoteData& get_note_2() {
-		return m_note_2;
-	}
-
-	const std::pair<int, bool> get_interval() {
-		return m_interval;
-	}
-
-	const int get_note_1_movement() {
-		return m_note_1_movement;
-	}
-
-	const int get_note_2_movement() {
-		return m_note_2_movement;
-	}
-
-	const int get_rhythmic_hierarchy() {
-		return m_rhythmic_hierarchy;
-	}
-
-private:
-	const mx::api::NoteData& m_note_1{ mx::api::NoteData{} };
-	const mx::api::NoteData& m_note_2{ mx::api::NoteData{} };
-	std::pair<int, bool> m_interval{};
-	int m_note_1_movement{ 0 };
-	int m_note_2_movement{ 0 };
-	int m_rhythmic_hierarchy{ 0 }; // 0 = weakest beat (tick).
-};
+	return rhythmic_hierarchy;
+}
 
 int main() {
 	try {
@@ -364,7 +358,7 @@ int main() {
 		const Voice follower{ shift(leader, v_shift, h_shift, fifths, ticks_per_measure, time_signature) }; // const
 		voices_array.emplace_back(follower);
 
-		// For every voice, generate per-tick references
+		// For every voice, generate per-tick note data. MAKES COPIES
 		std::vector<std::vector<mx::api::NoteData>> notes_by_tick_for_all_voices{}; // Indexed by tick. Ordering of voices doesn't really matter
 		for (Voice voice : voices_array) {
 			std::vector<mx::api::NoteData> notes_by_tick_for_voice{};
@@ -376,16 +370,31 @@ int main() {
 			notes_by_tick_for_all_voices.emplace_back(notes_by_tick_for_voice);
 		}
 
+		// Generate rhythmic hierarchy
+		const std::vector<int> rhythmic_hierarchy{create_rhythmic_hierarchy_array(ticks_per_measure, time_signature)};
+
 	// FOR EACH PAIR OF VOICES {
-		// Generate sonority array
-		std::vector<Sonority> sonority_array{};
-		for (int i{ 0 }; i < (2 * score.parts.at(0).measures.size() * ticks_per_measure); ++i) { // Double number of measures to accomodate horizontally shifted voices (there could be multiple followers that continue after leader ends)
-			//sonority_array.push_back()
-			;
+		// Generate raw unconsolidated sonority array
+		Voice& voice_1{ notes_by_tick_for_all_voices.at(0) }; // temp
+		Voice& voice_2{ notes_by_tick_for_all_voices.at(1) }; // temp
+		std::vector<Sonority> raw_sonority_array{};
+		for (int i{ 0 }; i < second_highest_notes_by_tick_lengths(notes_by_tick_for_all_voices); ++i) {
+			raw_sonority_array.push_back(Sonority{voice_1.at(i), voice_2.at(i), rhythmic_hierarchy.at(i % ticks_per_measure)});
+		}
+
+		// Generate downbeat sonority arrays
+		//std::vector<std::vector<Sonority>> downbeat_sonority_arrays{};
+
+		// Generated consolidated sonority array
+		std::vector<Sonority> consolidated_sonority_array{};
+		for (int i{ 0 }; i < raw_sonority_array.size() - 1; ++i) {
+			if (!is_identical(raw_sonority_array.at(i), raw_sonority_array.at(i + 1))) {
+				consolidated_sonority_array.emplace_back(raw_sonority_array.at(i));
+			}
 		}
 
 		// Check counterpoint
-		const std::pair<int, int> grade{ check_counterpoint(voices_array) }; // Grade = (errors, suboptimalities)
+		const std::pair<int, int> grade{ check_counterpoint(consolidated_sonority_array) }; // Grade = (errors, suboptimalities)
 
 	// }
 

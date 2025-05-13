@@ -1,10 +1,10 @@
+#include "counterpoint_checker.h"
+
 #include "mx/api/ScoreData.h"
 
 #include <utility>
 
-using Voice = std::vector<mx::api::NoteData>;
-
-const std::pair<int, int> check_counterpoint(const std::vector<Voice>&) {
+const std::pair<int, int> check_counterpoint(const std::vector<Sonority>&) {
 	// Simple array, only note changes
 
 	// Generate interval array
