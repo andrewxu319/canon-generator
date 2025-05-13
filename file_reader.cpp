@@ -27,7 +27,7 @@ const std::string read_file(const std::string& path) { // const
 	std::ifstream in(path);
 	in.read(&file_contents[0], size);
 
-    std::cout << file_contents;
+    //std::cout << file_contents;
 
 	return file_contents;
 

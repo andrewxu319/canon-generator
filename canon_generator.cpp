@@ -67,78 +67,6 @@ const mx::api::DurationData ticks_to_duration_data(const int ticks, const int ti
 	}
 
 	return duration;
-	/*switch (dur32nd_in_note) {
-	case 1:
-		duration.durationName = mx::api::DurationName::dur32nd;
-		break;
-	case 2:
-		duration.durationName = mx::api::DurationName::dur16th;
-		break;
-	case 3:
-		duration.durationName = mx::api::DurationName::dur16th;
-		duration.durationDots = 1;
-		break;
-	case 4:
-		duration.durationName = mx::api::DurationName::eighth;
-		break;
-	case 6:
-		duration.durationName = mx::api::DurationName::eighth;
-		duration.durationDots = 1;
-		break;
-	case 7:
-		duration.durationName = mx::api::DurationName::eighth;
-		duration.durationDots = 2;
-		break;
-	case 8:
-		duration.durationName = mx::api::DurationName::quarter;
-		break;
-	case 12:
-		duration.durationName = mx::api::DurationName::quarter;
-		duration.durationDots = 1;
-		break;
-	case 14:
-		duration.durationName = mx::api::DurationName::quarter;
-		duration.durationDots = 2;
-		break;
-	case 16:
-		duration.durationName = mx::api::DurationName::half;
-		break;
-	case 24:
-		duration.durationName = mx::api::DurationName::half;
-		duration.durationDots = 1;
-		break;
-	case 28:
-		duration.durationName = mx::api::DurationName::half;
-		duration.durationDots = 2;
-		break;
-	case 32:
-		duration.durationName = mx::api::DurationName::whole;
-		break;
-	case 48:
-		duration.durationName = mx::api::DurationName::whole;
-		duration.durationDots = 1;
-		break;
-	case 56:
-		duration.durationName = mx::api::DurationName::whole;
-		duration.durationDots = 2;
-		break;
-	case 64:
-		duration.durationName = mx::api::DurationName::breve;
-		break;
-	case 96:
-		duration.durationName = mx::api::DurationName::breve;
-		duration.durationDots = 1;
-		break;
-	case 112:
-		duration.durationName = mx::api::DurationName::breve;
-		duration.durationDots = 2;
-		break;
-	default:
-		throw Exception{ "Invalid duration!" };
-	}*/
-
-	//const int ticks_per_quarter{ ticks_per_measure * time_signature.beatType / 4 / time_signature.beats }; // ticks_per_measure / time_signature.beats * (time_signature.beatType / 4)
-	//const double num_of_quarters{ static_cast<double>(ticks) / ticks_per_quarter }
 }
 
 const Voice shift(Voice voice, const int v_shift, const int h_shift, const int fifths, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy
@@ -157,8 +85,8 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const int f
 				}
 			}
 			else if (v_shift < 0) {
-				note.pitchData.step = static_cast<mx::api::Step>(destination_int_pre_mod + 7);
-				if (destination_int_pre_mod < 6) {
+				note.pitchData.step = static_cast<mx::api::Step>((destination_int_pre_mod + 7) % 7);
+				if (destination_int_pre_mod < 0) { // 6?
 					--note.pitchData.octave;
 				}
 			}
@@ -200,6 +128,50 @@ const mx::api::PartData double_part_length(mx::api::PartData part, int part_leng
 	return part;
 }
 
+const int get_last_key_before(const int ticks) {
+	const std::vector<int> keys{ 1,2,3,4,6,7,8,12,14,16,24,28,32,48,56,64,96,112 }; // TODO: link this to map in ticks_to_duration_data https://www.geeksforgeeks.org/extract-keys-from-cpp-map/;
+	return *std::lower_bound(keys.rbegin(), keys.rend(), ticks, std::greater<int>());
+}
+
+Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) {
+	Voice output_voice{}; // Array of notes
+
+	// First part
+	output_voice.emplace_back(original_note);
+	try {
+		output_voice.at(0).durationData = ticks_to_duration_data(first_half_ticks, ticks_per_measure, time_signature);
+		output_voice.back().isTieStart = true;
+	}
+	catch (...) { // TODO: specify exception
+		output_voice.at(0).durationData.durationTimeTicks = first_half_ticks; // Truncate so everything still fits in the first measure. Don't care about the rest of durationData since it'll fix itself later
+		const Voice reattempt_splitted_notes{ split_note(output_voice.at(0), get_last_key_before(first_half_ticks), ticks_per_measure, time_signature) };
+		output_voice.erase(output_voice.begin());
+		for (mx::api::NoteData reattempt_splitted_note : reattempt_splitted_notes) {
+			output_voice.emplace_back(reattempt_splitted_note);
+			output_voice.back().isTieStart = true; // Because this is actually the second to last at most (second part to be added)
+		}
+	}
+
+	// Second part
+	output_voice.emplace_back(original_note);
+	if (original_note.isTieStart) {
+		output_voice.back().isTieStart = true;
+	}
+	output_voice.back().isTieStop = true;
+	output_voice.back().tickTimePosition = (output_voice.end()[-2].tickTimePosition + output_voice.end()[-2].durationData.durationTimeTicks) % ticks_per_measure;
+	try {
+		output_voice.back().durationData = ticks_to_duration_data(original_note.durationData.durationTimeTicks - first_half_ticks, ticks_per_measure, time_signature);
+	}
+	catch (...) { // TODO: specify exception
+		const Voice reattempt_splitted_notes{ split_note(output_voice.back(), get_last_key_before(original_note.durationData.durationTimeTicks - first_half_ticks), ticks_per_measure, time_signature) };
+		for (mx::api::NoteData reattempt_splitted_note : reattempt_splitted_notes) {
+			output_voice.emplace_back(reattempt_splitted_note);
+		}
+	}
+
+	return output_voice;
+}
+
 const mx::api::PartData voice_array_to_part(const mx::api::ScoreData& score, Voice voice, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) {
 	mx::api::PartData part{ score.parts.at(0) }; // Copy
 	part = double_part_length(part, part.measures.size(), time_signature); // TODO: verify time signature doesn't change
@@ -211,17 +183,12 @@ const mx::api::PartData voice_array_to_part(const mx::api::ScoreData& score, Voi
 		for (int j{ 0 }; j < ticks_per_measure;) { // Increment j BEFORE erasing the first voice in array
 			const int ticks_to_barline{ ticks_per_measure - j };
 			if (ticks_to_barline < voice.at(0).durationData.durationTimeTicks) {
-				mx::api::NoteData end_tie_note{ voice.at(0) };
-				end_tie_note.durationData = ticks_to_duration_data(voice.at(0).durationData.durationTimeTicks - ticks_to_barline, ticks_per_measure, time_signature);
-				if (voice.at(0).isTieStart) {
-					end_tie_note.isTieStart = true;
+				auto& splitted_notes{ split_note(voice.at(0), ticks_to_barline, ticks_per_measure, time_signature)};
+				voice.erase(voice.begin());
+				while (splitted_notes.size() > 0) {
+					voice.insert(voice.begin(), splitted_notes.back()); // Insert in REVERSE ORDER so first in splitted_notes goes in front
+					splitted_notes.pop_back();
 				}
-				end_tie_note.isTieStop = true;
-				end_tie_note.tickTimePosition = 0;
-				voice.insert(voice.begin() + 1, end_tie_note);
-				
-				voice.at(0).durationData = ticks_to_duration_data(ticks_to_barline, ticks_per_measure, time_signature);
-				voice.at(0).isTieStart = true;
 			}
 
 			j += voice.at(0).durationData.durationTimeTicks;
@@ -266,8 +233,8 @@ int main() {
 		// Create follower (LOOP THIS)
 		std::vector<Voice> follower_voices_list{};
 		// LOOP HERE
-		int v_shift{ 1 };
-		int h_shift{ 3 };
+		int v_shift{ -5 };
+		int h_shift{ 7 };
 		const Voice follower{ shift(leader, v_shift, h_shift, fifths, ticks_per_measure, time_signature) };
 		follower_voices_list.emplace_back(follower);
 
