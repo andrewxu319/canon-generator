@@ -3,12 +3,14 @@
 #include "settings.h"
 #include "file_reader.h"
 #include "file_writer.h"
+#include "counterpoint_checker.h"
 #include "mx/api/ScoreData.h"
 
 #include <iostream>
 #include <string>
 #include <vector>
 #include <map>
+#include <cmath>
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
 
@@ -69,55 +71,20 @@ const mx::api::DurationData ticks_to_duration_data(const int ticks, const int ti
 	return duration;
 }
 
-const Voice shift(Voice voice, const int v_shift, const int h_shift, const int fifths, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy
-	// Vertical shift
-	if (v_shift != 0) {
-		for (mx::api::NoteData& note : voice) {
-			// Diatonic transpose
-			if (v_shift < -6 || v_shift > 6) {
-				throw Exception{ "Vertical shift must be between -6 and 6! " + std::to_string(v_shift) + " is illegal.\n" };
-			}
-			const int destination_int_pre_mod{ static_cast<int>(note.pitchData.step) + v_shift };
-			if (v_shift > 0) {
-				note.pitchData.step = static_cast<mx::api::Step>(destination_int_pre_mod % 7);
-				if (destination_int_pre_mod > 6) {
-					++note.pitchData.octave;
-				}
-			}
-			else if (v_shift < 0) {
-				note.pitchData.step = static_cast<mx::api::Step>((destination_int_pre_mod + 7) % 7);
-				if (destination_int_pre_mod < 0) { // 6?
-					--note.pitchData.octave;
-				}
-			}
-
-			// // Key signature
-			note.pitchData.alter = alters_by_key(fifths)[static_cast<int>(note.pitchData.step)];
-		}
-	}
-
-	if (h_shift != 0) {
-		// TODO: Check to make sure second half of voice array is empty
-		for (mx::api::NoteData& note : voice) {
-			note.tickTimePosition = (note.tickTimePosition + h_shift) % ticks_per_measure;
-		}
-
-		mx::api::NoteData rest{};
-		rest.isRest = true;
-		rest.durationData = ticks_to_duration_data(h_shift, ticks_per_measure, time_signature);
-		voice.insert(voice.begin(), rest);
-	}
-
-	return voice;
-}
-
-const mx::api::PartData double_part_length(mx::api::PartData part, int part_length, const mx::api::TimeSignatureData& time_signature) {
+const mx::api::PartData extend_part_length(mx::api::PartData part, int additional_measures, const mx::api::TimeSignatureData& time_signature, const int ticks_per_measure) {
 	part.measures.back().barlines = std::vector<mx::api::BarlineData>{};
 
 	mx::api::StaffData staff{ part.measures.at(0).staves.at(0) };
 	staff.clefs = std::vector<mx::api::ClefData>{};
+	
+	mx::api::NoteData rest{};
+	rest.isRest = true;
+	rest.durationData = ticks_to_duration_data(ticks_per_measure, ticks_per_measure, time_signature);
+
 	staff.voices.at(0) = mx::api::VoiceData{};
-	for (int i{ 0 }; i < part_length; ++i) { // Double length of part
+	staff.voices.at(0).notes.emplace_back(rest);
+
+	for (int i{ 0 }; i < additional_measures; ++i) { // Double length of part
 		mx::api::MeasureData measure{};
 		measure.timeSignature = time_signature;
 		measure.timeSignature.isImplicit = true;
@@ -141,6 +108,7 @@ Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, co
 	try {
 		output_voice.at(0).durationData = ticks_to_duration_data(first_half_ticks, ticks_per_measure, time_signature);
 		output_voice.back().isTieStart = true;
+
 	}
 	catch (...) { // TODO: specify exception
 		output_voice.at(0).durationData.durationTimeTicks = first_half_ticks; // Truncate so everything still fits in the first measure. Don't care about the rest of durationData since it'll fix itself later
@@ -172,9 +140,85 @@ Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, co
 	return output_voice;
 }
 
+const Voice shift(Voice voice, const int v_shift, const int h_shift, const int fifths, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy
+	// Vertical shift
+	if (v_shift != 0) {
+		for (mx::api::NoteData& note : voice) {
+			// Diatonic transpose
+			if (v_shift < -6 || v_shift > 6) {
+				throw Exception{ "Vertical shift must be between -6 and 6! " + std::to_string(v_shift) + " is illegal.\n" };
+			}
+			const int destination_int_pre_mod{ static_cast<int>(note.pitchData.step) + v_shift };
+			if (v_shift > 0) {
+				note.pitchData.step = static_cast<mx::api::Step>(destination_int_pre_mod % 7);
+				if (destination_int_pre_mod > 6) {
+					++note.pitchData.octave;
+				}
+			}
+			else if (v_shift < 0) {
+				note.pitchData.step = static_cast<mx::api::Step>((destination_int_pre_mod + 21) % 7); // Adjust the 21 based on max number of extra octaves
+				if (destination_int_pre_mod < 0) { // 6?
+					--note.pitchData.octave;
+				}
+			}
+
+			// // Key signature
+			note.pitchData.alter = alters_by_key(fifths)[static_cast<int>(note.pitchData.step)];
+		}
+	}
+
+	if (h_shift != 0) {
+		// TODO: Check to make sure second half of voice array is empty
+		for (mx::api::NoteData& note : voice) {
+			note.tickTimePosition = (note.tickTimePosition + h_shift) % ticks_per_measure;
+		}
+
+		mx::api::NoteData original_rest{};
+		original_rest.isRest = true;
+		original_rest.durationData.durationTimeTicks = h_shift;
+		Voice splitted_rests{ original_rest };
+		if (splitted_rests.back().durationData.durationTimeTicks > ticks_per_measure) {
+			while (splitted_rests.back().durationData.durationTimeTicks > ticks_per_measure) {
+				Voice splitted_back{ split_note(splitted_rests.back(), ticks_per_measure, ticks_per_measure, time_signature) };
+				splitted_rests.pop_back();
+				for (mx::api::NoteData rest : splitted_back) {
+					splitted_rests.emplace_back(rest);
+				}
+			}
+		}
+		else{
+			try {
+				// splitted_rests.back() is just equal to original note
+				splitted_rests.back().durationData = ticks_to_duration_data(splitted_rests.back().durationData.durationTimeTicks, ticks_per_measure, time_signature);
+			}
+			catch (...) { // TODO: specify exception
+				splitted_rests = { split_note(splitted_rests.back(), get_last_key_before(h_shift), ticks_per_measure, time_signature) };
+			}
+		}
+		
+		//try {
+		//	splitted_rests.back().durationData = ticks_to_duration_data(splitted_rests.back().durationData.durationTimeTicks, ticks_per_measure, time_signature);
+		//	voice.insert(voice.begin(), rest);
+		//}
+		//catch (...) { // TODO: specify exception
+		//	const Voice splitted_rests{ split_note(rest, get_last_key_before(h_shift), ticks_per_measure, time_signature) };
+		//	for (mx::api::NoteData splitted_rest : splitted_rests) {
+		//		voice.insert(voice.begin(), splitted_rest);
+		//	}
+		//}
+		splitted_rests.insert(splitted_rests.end(), voice.begin(), voice.end()); // Concatinate the strings into splitted_rests. I know it's wonky
+		voice = splitted_rests;
+		//for (mx::api::NoteData rest : splitted_rests) {
+		//	voice.insert(voice.begin(), rest);
+		//}
+	}
+
+	return voice;
+}
+
 const mx::api::PartData voice_array_to_part(const mx::api::ScoreData& score, Voice voice, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) {
 	mx::api::PartData part{ score.parts.at(0) }; // Copy
-	part = double_part_length(part, part.measures.size(), time_signature); // TODO: verify time signature doesn't change
+	part = extend_part_length(part, part.measures.size(), time_signature, ticks_per_measure); // TODO: verify time signature doesn't change
 
 	// Remap measures
 	for (int i{ 0 }; i < part.measures.size(); ++i) { // Iterates through the measures
@@ -215,6 +259,85 @@ const mx::api::ScoreData create_output_score(mx::api::ScoreData score, const std
 	return score; // temp
 }
 
+const std::pair<int, bool> interval (const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const bool number_signed = false){ // Second (bool)---tritone. If signed, note_2 higher = positive
+	if (note_1.isRest || note_2.isRest) {
+		return { -1000, false }; // -1000 = rest code
+	}
+
+	std::pair<int, bool> output{};
+	
+	const int signed_number{ (static_cast<int>(note_2.pitchData.step) + 7 * (note_2.pitchData.octave - note_1.pitchData.octave)) - static_cast<int>(note_1.pitchData.step) };
+
+	// Check for tritones
+	const std::map<mx::api::Step, int> note_codes { // Map each white note to a number, use alter to increment the number
+		{ mx::api::Step::c, 0 },
+		{ mx::api::Step::d, 2 },
+		{ mx::api::Step::e, 4 },
+		{ mx::api::Step::f, 5 },
+		{ mx::api::Step::g, 7 },
+		{ mx::api::Step::a, 9 },
+		{ mx::api::Step::b, 11 },
+	};
+	const int note_1_code{ (note_codes.at(note_1.pitchData.step) + note_1.pitchData.alter + 12) % 12 }; // Add 12 to avoid negative values (C flat)
+	const int note_2_code{ (note_codes.at(note_2.pitchData.step) + note_2.pitchData.alter + 12) % 12 };
+	if (abs(note_2_code - note_1_code) == 6) {
+		output = { signed_number, true};
+	}
+	else {
+		output = { signed_number, false };
+	}
+
+	if (number_signed) {
+		output.first = abs(output.first);
+	}
+	return output;
+}
+
+class Sonority {
+public:
+	Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const int rhythmic_hierarchy)
+		: m_note_1{ note_1 }, m_note_2{ note_2 }, m_rhythmic_hierarchy{ rhythmic_hierarchy } {
+		m_interval = interval(m_note_1, m_note_2);
+	}
+
+	void build_movement_data(Sonority& next_sonority){
+		m_note_1_movement = interval(next_sonority.get_note_1(), get_note_1(), true).first; // Don't care about tritone leaps
+		m_note_2_movement = interval(next_sonority.get_note_2(), get_note_2(), true).first;
+	}
+
+	const mx::api::NoteData& get_note_1() {
+		return m_note_1;
+	}
+
+	const mx::api::NoteData& get_note_2() {
+		return m_note_2;
+	}
+
+	const std::pair<int, bool> get_interval() {
+		return m_interval;
+	}
+
+	const int get_note_1_movement() {
+		return m_note_1_movement;
+	}
+
+	const int get_note_2_movement() {
+		return m_note_2_movement;
+	}
+
+	const int get_rhythmic_hierarchy() {
+		return m_rhythmic_hierarchy;
+	}
+
+private:
+	const mx::api::NoteData& m_note_1{ mx::api::NoteData{} };
+	const mx::api::NoteData& m_note_2{ mx::api::NoteData{} };
+	std::pair<int, bool> m_interval{};
+	int m_note_1_movement{ 0 };
+	int m_note_2_movement{ 0 };
+	int m_rhythmic_hierarchy{ 0 }; // 0 = weakest beat (tick).
+};
+
 int main() {
 	try {
 		// // Read file
@@ -231,27 +354,64 @@ int main() {
 		const int ticks_per_measure{ last_note.tickTimePosition + last_note.durationData.durationTimeTicks };
 
 		// Create follower (LOOP THIS)
-		std::vector<Voice> follower_voices_list{};
-		// LOOP HERE
-		int v_shift{ -5 };
-		int h_shift{ 7 };
-		const Voice follower{ shift(leader, v_shift, h_shift, fifths, ticks_per_measure, time_signature) };
-		follower_voices_list.emplace_back(follower);
+		std::vector<Voice> voices_array{};
+		voices_array.emplace_back(leader);
+		// TODO: FORBID VOICE CROSSINGS
 
-		// // Create texture
-		//const std::vector<Voice> texture{ create_texture() };
+		// LOOP HERE (and multiple followers)
+		int v_shift{ -1 };
+		int h_shift{ 4 };
+		const Voice follower{ shift(leader, v_shift, h_shift, fifths, ticks_per_measure, time_signature) }; // const
+		voices_array.emplace_back(follower);
 
-
-		// Create output musicxml
-		const mx::api::PartData& original_leader_part{ score.parts.at(0) };
-		const mx::api::PartData leader_part{ double_part_length(original_leader_part, original_leader_part.measures.size(), original_leader_part.measures.at(0).timeSignature) };
-		
-		std::vector<mx::api::PartData> parts_list;
-		parts_list.emplace_back(leader_part);
-		for (Voice follower_voice : follower_voices_list) {
-			parts_list.emplace_back( voice_array_to_part(score, follower, ticks_per_measure, time_signature) ); // Need a function to fix barlines
+		// For every voice, generate per-tick references
+		std::vector<std::vector<mx::api::NoteData>> notes_by_tick_for_all_voices{}; // Indexed by tick. Ordering of voices doesn't really matter
+		for (Voice voice : voices_array) {
+			std::vector<mx::api::NoteData> notes_by_tick_for_voice{};
+			for (const mx::api::NoteData& note : voice) {
+				for (int i{ 0 }; i < note.durationData.durationTimeTicks; ++i) { // Append as many times as the number of ticks the note lasts for
+					notes_by_tick_for_voice.emplace_back(note);
+				}
+			}
+			notes_by_tick_for_all_voices.emplace_back(notes_by_tick_for_voice);
 		}
-		const mx::api::ScoreData output_score{ create_output_score(score, parts_list) }; // add follower(s) to original score
+
+	// FOR EACH PAIR OF VOICES {
+		// Generate sonority array
+		std::vector<Sonority> sonority_array{};
+		for (int i{ 0 }; i < (2 * score.parts.at(0).measures.size() * ticks_per_measure); ++i) { // Double number of measures to accomodate horizontally shifted voices (there could be multiple followers that continue after leader ends)
+			//sonority_array.push_back()
+			;
+		}
+
+		// Check counterpoint
+		const std::pair<int, int> grade{ check_counterpoint(voices_array) }; // Grade = (errors, suboptimalities)
+
+	// }
+
+		// Create musicxml
+		const mx::api::PartData& original_leader_part{ score.parts.at(0) };
+		//const mx::api::PartData leader_part{ extend_part_length(original_leader_part, original_leader_part.measures.size(), original_leader_part.measures.at(0).timeSignature, ticks_per_measure) };
+		const mx::api::PartData leader_part{ original_leader_part };
+
+		std::vector<mx::api::PartData> parts_array;
+		parts_array.emplace_back(leader_part);
+		for (int i{ 1 }; i < voices_array.size(); ++i) { // Skip first because first is leader part
+			parts_array.emplace_back(voice_array_to_part(score, voices_array.at(i), ticks_per_measure, time_signature)); // Need a function to fix barlines
+		}
+
+		// Extend every part to the same length
+		int longest_part_size{ 0 };
+		for (const mx::api::PartData& part : parts_array) { // Get longest part
+			if (part.measures.size() > longest_part_size) {
+				longest_part_size = part.measures.size();
+			}
+		}
+		for (mx::api::PartData& part : parts_array) {
+			part = extend_part_length(part, longest_part_size - part.measures.size(), time_signature, ticks_per_measure);
+		}
+
+		const mx::api::ScoreData output_score{ create_output_score(score, parts_array) }; // add follower(s) to original score
 
 		//// Write file
 		write_file(output_score, settings::write_file_path); // output_score
