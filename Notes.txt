@@ -1,6 +1,9 @@
 INPUT REQUIREMENTS
 - Each measure must have the same key signature
 
+TODO
+- enums for interval names
+
 PLANNING
 - read musicxml---each voice is an ARRAY OF PITCHES with duration = shortest note
   - read one voice only

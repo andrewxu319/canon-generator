@@ -353,7 +353,7 @@ int main() {
 		// TODO: FORBID VOICE CROSSINGS
 
 		// LOOP HERE (and multiple followers)
-		int v_shift{ -1 };
+		int v_shift{ 0 };
 		int h_shift{ 4 };
 		const Voice follower{ shift(leader, v_shift, h_shift, fifths, ticks_per_measure, time_signature) }; // const
 		voices_array.emplace_back(follower);
@@ -371,30 +371,48 @@ int main() {
 		}
 
 		// Generate rhythmic hierarchy
-		const std::vector<int> rhythmic_hierarchy{create_rhythmic_hierarchy_array(ticks_per_measure, time_signature)};
+		const std::vector<int> rhythmic_hierarchy_array{create_rhythmic_hierarchy_array(ticks_per_measure, time_signature)};
+		const int rhythmic_hierarchy_max_depth{ *std::max_element(rhythmic_hierarchy_array.begin(), rhythmic_hierarchy_array.end()) };
+		const int ticks_per_beat{ ticks_per_measure / time_signature.beats };
+		const int rhythmic_hierarchy_of_beat{ rhythmic_hierarchy_array.at(ticks_per_beat) }; // Second beat is always on the weakest beat hierarchies
 
 	// FOR EACH PAIR OF VOICES {
-		// Generate raw unconsolidated sonority array
+	// (different pairs of voices will have different strippings)
+		// Generate raw unstripped sonority array
 		Voice& voice_1{ notes_by_tick_for_all_voices.at(0) }; // temp
 		Voice& voice_2{ notes_by_tick_for_all_voices.at(1) }; // temp
-		std::vector<Sonority> raw_sonority_array{};
+		SonorityArray raw_sonority_array{};
 		for (int i{ 0 }; i < second_highest_notes_by_tick_lengths(notes_by_tick_for_all_voices); ++i) {
-			raw_sonority_array.push_back(Sonority{voice_1.at(i), voice_2.at(i), rhythmic_hierarchy.at(i % ticks_per_measure)});
+			raw_sonority_array.emplace_back(Sonority{ voice_1.at(i), voice_2.at(i), rhythmic_hierarchy_array.at(i % ticks_per_measure), i });
 		}
 
 		// Generate downbeat sonority arrays
-		//std::vector<std::vector<Sonority>> downbeat_sonority_arrays{};
-
-		// Generated consolidated sonority array
-		std::vector<Sonority> consolidated_sonority_array{};
-		for (int i{ 0 }; i < raw_sonority_array.size() - 1; ++i) {
-			if (!is_identical(raw_sonority_array.at(i), raw_sonority_array.at(i + 1))) {
-				consolidated_sonority_array.emplace_back(raw_sonority_array.at(i));
+		std::vector<SonorityArray> sonority_arrays{};
+		for (int depth{ 0 }; depth <= rhythmic_hierarchy_max_depth; ++depth) {
+			SonorityArray unstripped_sonority_array{};
+			for (int i{ 0 }; i < raw_sonority_array.size(); ++i) {
+				if (depth <= raw_sonority_array.at(i).get_rhythmic_hierarchy()) {
+					unstripped_sonority_array.emplace_back(raw_sonority_array.at(i));
+				}
 			}
+
+			SonorityArray stripped_sonority_array{};
+			stripped_sonority_array.emplace_back(unstripped_sonority_array.at(0));
+			for (int i{ 0 }; i < unstripped_sonority_array.size() - 1; ++i) { // Always push the first
+				if (!is_identical(unstripped_sonority_array.at(i), unstripped_sonority_array.at(i + 1))) {
+					stripped_sonority_array.emplace_back(unstripped_sonority_array.at(i + 1));
+				}
+			}
+
+			for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
+				stripped_sonority_array.at(i).build_movement_data(stripped_sonority_array.at(i + 1));
+			}
+
+			sonority_arrays.emplace_back(stripped_sonority_array);
 		}
 
 		// Check counterpoint
-		const std::pair<int, int> grade{ check_counterpoint(consolidated_sonority_array) }; // Grade = (errors, suboptimalities)
+		const auto grade{ check_counterpoint(sonority_arrays, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
 
 	// }
 
