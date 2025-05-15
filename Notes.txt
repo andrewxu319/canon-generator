@@ -2,7 +2,10 @@ INPUT REQUIREMENTS
 - Each measure must have the same key signature
 
 TODO
+- fix anticipations
 - enums for interval names
+- augmented & diminished intervals are dissonant
+- make message a class so it can take an optional number of parameters
 
 PLANNING
 - read musicxml---each voice is an ARRAY OF PITCHES with duration = shortest note
@@ -22,6 +25,7 @@ PLANNING
   - WAIT maybe make array of differences (intervals between the two), then make library of allowable interval sequences (still need to check source for parallels etc)
     - remove duplicates in ORIGINAL arrays (if both arrays repeat)
     - construct rhythmic hierarchy array (LATER bc u then need to consider different rhythmic possibilities. maybe j shift by one cycle)
+  - if something only works for inner voices or not against the bass, mark the follower(s) as inner voices or upper voices
 - if 3 or more voices---check each pair
 - write back into musicxml---add generated voices
 
@@ -44,3 +48,5 @@ https://learn.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio?view
 
 
 1 tick = 1 beat
+
+https://globalmusictheory.com/the-rules-of-counterpoint-cantus-firmus-through-5th-species/

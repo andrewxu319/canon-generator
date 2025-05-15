@@ -8,16 +8,26 @@ Sonority::Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& not
 	//m_simple_interval = m_compound_interval;
 }
 
-void Sonority::build_movement_data(Sonority& next_sonority) {
-	m_note_1_movement = get_interval(next_sonority.get_note_1(), get_note_1(), true); // Don't care about tritone leaps
-	m_note_2_movement = get_interval(next_sonority.get_note_2(), get_note_2(), true);
+const bool Sonority::is_dissonant() const {
+	Interval interval{ get_simple_interval() };
+
+	if ((interval.first == 1) || (interval.first == 6) || (interval.second == 6)) {
+		return true;
+	}
+
+	return false;
 }
 
-const MovementType Sonority::get_movement_type() const {
-	const int note_1_movement_type{ (m_note_1_movement.second > 0) ? 1 : ((m_note_1_movement.second < 0) ? -1 : 0) };
-	const int note_2_movement_type{ (m_note_2_movement.second > 0) ? 1 : ((m_note_2_movement.second < 0) ? -1 : 0) };
-	if (note_1_movement_type == note_2_movement_type) {
-		if (note_1_movement_type == 0) {
+void Sonority::build_motion_data(Sonority& next_sonority) {
+	m_note_1_motion = get_interval(get_note_1(), next_sonority.get_note_1(), true); // Don't care about tritone leaps
+	m_note_2_motion = get_interval(get_note_2(), next_sonority.get_note_2(), true);
+}
+
+const MotionType Sonority::get_motion_type() const {
+	const int note_1_motion_type{ (m_note_1_motion.second > 0) ? 1 : ((m_note_1_motion.second < 0) ? -1 : 0) };
+	const int note_2_motion_type{ (m_note_2_motion.second > 0) ? 1 : ((m_note_2_motion.second < 0) ? -1 : 0) };
+	if (note_1_motion_type == note_2_motion_type) {
+		if (note_1_motion_type == 0) {
 			return stationary;
 		}
 		else {
@@ -25,7 +35,7 @@ const MovementType Sonority::get_movement_type() const {
 		}
 	}
 	else {
-		if (note_1_movement_type == 0 || note_2_movement_type == 0) {
+		if (note_1_motion_type == 0 || note_2_motion_type == 0) {
 			return oblique;
 		}
 		else {
@@ -69,24 +79,20 @@ const Interval get_interval(const mx::api::NoteData& note_1, const mx::api::Note
 	}
 }
 
-const bool is_consonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2) {
+const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2) {
+	if (note_1.isRest || note_2.isRest) {
+		return true;
+	}
+
 	Interval simple_interval{ get_interval(note_1, note_2, false) };
 
-	if ((simple_interval.first % 7 == 1) || (simple_interval.first % 7 == 6) || (simple_interval.second % 12 == 6)){
-		return false;
+	if ((simple_interval.first % 7 == 1) || (simple_interval.first % 7 == 6)){
+		// || (simple_interval.second % 12 == 6)
+		// Treat the Aug 4 and Dim 5 as consonant if not involving bass.
+		return true;
 	}
 
-	return true;
-}
-
-const bool is_consonant(const Sonority& sonority) {
-	Interval interval{ sonority.get_simple_interval()};
-
-	if ((interval.first == 1) || (interval.first == 6) || (interval.second == 6)) {
-		return false;
-	}
-
-	return true;
+	return false;
 }
 
 const bool is_identical(const Sonority& sonority_1, const Sonority& sonority_2) {

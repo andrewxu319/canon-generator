@@ -4,7 +4,7 @@
 
 using Interval = std::pair<int, int>;
 
-enum MovementType {
+enum MotionType {
 	contrary,
 	oblique,
 	similar,
@@ -17,8 +17,9 @@ class Sonority {
 public:
 	Sonority::Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const int rhythmic_hierarchy, const int id);
 
-	void build_movement_data(Sonority& next_sonority);
-	const MovementType Sonority::get_movement_type() const;
+	const bool is_dissonant()const;
+	void build_motion_data(Sonority& next_sonority);
+	const MotionType get_motion_type() const;
 
 	const int get_id() const {
 		return m_id;
@@ -40,12 +41,12 @@ public:
 		return m_simple_interval;
 	}
 
-	const Interval get_note_1_movement() const {
-		return m_note_1_movement;
+	const Interval get_note_1_motion() const {
+		return m_note_1_motion;
 	}
 
-	const Interval get_note_2_movement() const {
-		return m_note_2_movement;
+	const Interval get_note_2_motion() const {
+		return m_note_2_motion;
 	}
 
 	const int get_rhythmic_hierarchy() const {
@@ -58,13 +59,12 @@ private:
 	const mx::api::NoteData& m_note_2{ mx::api::NoteData{} };
 	const Interval m_compound_interval{ get_interval(m_note_1, m_note_2, false) };
 	const Interval m_simple_interval{ m_compound_interval.first % 7, m_compound_interval.second % 12};
-	Interval m_note_1_movement{ 0, 0 };
-	Interval m_note_2_movement{ 0, 0 };
+	Interval m_note_1_motion{ 0, 0 };
+	Interval m_note_2_motion{ 0, 0 };
 	int m_rhythmic_hierarchy{ 0 }; // 0 = weakest beat (tick).
 };
 
 using SonorityArray = std::vector<Sonority>;
 
-const bool is_consonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2);
-const bool is_consonant(const Sonority& sonority);
+const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2);
 const bool is_identical(const Sonority& sonority_1, const Sonority& sonority_2);

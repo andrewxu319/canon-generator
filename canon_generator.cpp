@@ -405,7 +405,7 @@ int main() {
 			}
 
 			for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
-				stripped_sonority_array.at(i).build_movement_data(stripped_sonority_array.at(i + 1));
+				stripped_sonority_array.at(i).build_motion_data(stripped_sonority_array.at(i + 1));
 			}
 
 			sonority_arrays.emplace_back(stripped_sonority_array);
