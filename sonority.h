@@ -1,5 +1,7 @@
 #pragma once
 
+#include "exception.h"
+
 #include "mx/api/ScoreData.h"
 
 using Interval = std::pair<int, int>;
@@ -33,6 +35,18 @@ public:
 		return m_note_2;
 	}
 
+	const mx::api::NoteData& get_note(const int voice) const {
+		if (voice == 0) {
+			return m_note_1;
+		} else
+		if (voice == 1) {
+			return m_note_2;
+		}
+		else {
+			throw Exception("Invalid voice index!");
+		}
+	}
+
 	const Interval get_compound_interval() const {
 		return m_compound_interval;
 	}
@@ -47,6 +61,18 @@ public:
 
 	const Interval get_note_2_motion() const {
 		return m_note_2_motion;
+	}
+
+	const Interval get_note_motion(const int voice) const {
+		if (voice == 0) {
+			return m_note_1_motion;
+		} else
+		if (voice == 1) {
+			return m_note_2_motion;
+		}
+		else {
+			throw Exception("Invalid voice index!");
+		}
 	}
 
 	const int get_rhythmic_hierarchy() const {

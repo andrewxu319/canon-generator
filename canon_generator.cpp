@@ -354,7 +354,7 @@ int main() {
 
 		// LOOP HERE (and multiple followers)
 		int v_shift{ 0 };
-		int h_shift{ 4 };
+		int h_shift{ 8 };
 		const Voice follower{ shift(leader, v_shift, h_shift, fifths, ticks_per_measure, time_signature) }; // const
 		voices_array.emplace_back(follower);
 
@@ -412,7 +412,7 @@ int main() {
 		}
 
 		// Check counterpoint
-		const auto grade{ check_counterpoint(sonority_arrays, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
+		const auto grade{ check_counterpoint(sonority_arrays, ticks_per_measure, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
 
 	// }
 

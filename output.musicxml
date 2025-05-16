@@ -7,7 +7,7 @@
   <identification>
     <creator type="composer">Composer / arranger</creator>
     <encoding>
-      <encoding-date>2025-05-15</encoding-date>
+      <encoding-date>2025-05-16</encoding-date>
       <software>MuseScore 4.5.1</software>
       <supports type="yes" element="accidental" />
       <supports type="yes" element="beam" />
@@ -80,7 +80,7 @@
       </attributes>
       <note>
         <pitch>
-          <step>C</step>
+          <step>F</step>
           <octave>4</octave>
         </pitch>
         <duration>4</duration>
@@ -90,23 +90,31 @@
     </measure>
     <measure number="2">
       <note>
-        <pitch>
-          <step>A</step>
-          <octave>4</octave>
-        </pitch>
-        <duration>1</duration>
+        <rest />
+        <duration>2</duration>
         <voice>1</voice>
-        <type>quarter</type>
-        <stem>up</stem>
+        <type>half</type>
       </note>
       <note>
         <pitch>
-          <step>B</step>
-          <octave>4</octave>
+          <step>E</step>
+          <octave>5</octave>
         </pitch>
-        <duration>1</duration>
+        <duration>2</duration>
         <voice>1</voice>
-        <type>quarter</type>
+        <type>half</type>
+        <stem>down</stem>
+      </note>
+    </measure>
+    <measure number="3">
+      <note>
+        <pitch>
+          <step>E</step>
+          <octave>5</octave>
+        </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>half</type>
         <stem>down</stem>
       </note>
       <note>
@@ -120,17 +128,14 @@
         <stem>up</stem>
       </note>
       <note>
-        <rest />
+        <pitch>
+          <step>D</step>
+          <octave>5</octave>
+        </pitch>
         <duration>1</duration>
         <voice>1</voice>
         <type>quarter</type>
-      </note>
-    </measure>
-    <measure number="3">
-      <note>
-        <rest measure="yes" />
-        <duration>4</duration>
-        <voice>1</voice>
+        <stem>down</stem>
       </note>
     </measure>
     <measure number="4">
@@ -196,14 +201,30 @@
       <note>
         <rest />
         <duration>4</duration>
+        <tie type="start" />
         <voice>1</voice>
         <type>whole</type>
+        <notations>
+          <tied type="start" />
+        </notations>
       </note>
     </measure>
     <measure number="2">
       <note>
+        <rest />
+        <duration>4</duration>
+        <tie type="stop" />
+        <voice>1</voice>
+        <type>whole</type>
+        <notations>
+          <tied type="stop" />
+        </notations>
+      </note>
+    </measure>
+    <measure number="3">
+      <note>
         <pitch>
-          <step>C</step>
+          <step>F</step>
           <octave>4</octave>
         </pitch>
         <duration>4</duration>
@@ -211,25 +232,33 @@
         <type>whole</type>
       </note>
     </measure>
-    <measure number="3">
+    <measure number="4">
       <note>
-        <pitch>
-          <step>A</step>
-          <octave>4</octave>
-        </pitch>
-        <duration>1</duration>
+        <rest />
+        <duration>2</duration>
         <voice>1</voice>
-        <type>quarter</type>
-        <stem>up</stem>
+        <type>half</type>
       </note>
       <note>
         <pitch>
-          <step>B</step>
-          <octave>4</octave>
+          <step>E</step>
+          <octave>5</octave>
         </pitch>
-        <duration>1</duration>
+        <duration>2</duration>
         <voice>1</voice>
-        <type>quarter</type>
+        <type>half</type>
+        <stem>down</stem>
+      </note>
+    </measure>
+    <measure number="5">
+      <note>
+        <pitch>
+          <step>E</step>
+          <octave>5</octave>
+        </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>half</type>
         <stem>down</stem>
       </note>
       <note>
@@ -243,32 +272,21 @@
         <stem>up</stem>
       </note>
       <note>
-        <rest />
+        <pitch>
+          <step>D</step>
+          <octave>5</octave>
+        </pitch>
         <duration>1</duration>
         <voice>1</voice>
         <type>quarter</type>
-      </note>
-    </measure>
-    <measure number="4">
-      <note>
-        <rest measure="yes" />
-        <duration>4</duration>
-        <voice>1</voice>
-      </note>
-    </measure>
-    <measure number="5">
-      <note>
-        <rest measure="yes" />
-        <duration>4</duration>
-        <voice>1</voice>
+        <stem>down</stem>
       </note>
     </measure>
     <measure number="6">
       <note>
-        <rest />
+        <rest measure="yes" />
         <duration>4</duration>
         <voice>1</voice>
-        <type>whole</type>
       </note>
     </measure>
     <measure number="7">

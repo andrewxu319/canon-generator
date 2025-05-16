@@ -2,6 +2,7 @@ INPUT REQUIREMENTS
 - Each measure must have the same key signature
 
 TODO
+- make voices iterable
 - fix anticipations
 - enums for interval names
 - augmented & diminished intervals are dissonant
