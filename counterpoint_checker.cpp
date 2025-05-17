@@ -47,6 +47,93 @@ void send_warning_message(const Message& warning, std::vector<Message>& warning_
 	warning_message_box.emplace_back(warning);
 }
 
+
+const int get_note_start_index(const int current_sonority_index, const int voice, const SonorityArray& sonority_array) {
+	for (int i{ current_sonority_index - 1 }; i >= 0; --i) {
+		if ((sonority_array.at(i).get_note_motion(voice).second != 0) || sonority_array.at(i).get_note(voice).isRest) {
+			return i + 1;
+			// Search until note isn't stationary or is a rest, then return the next note
+		}
+	}
+	return current_sonority_index; // If no match, current sonority is the result
+}
+
+const int get_note_end_index(const int current_sonority_index, const int voice, const SonorityArray& sonority_array) {
+	for (int i{ current_sonority_index }; i < sonority_array.size(); ++i) {
+		if (sonority_array.at(i).get_note(voice).isRest) {
+			return i - 1;
+			// If encountering a rest, return the previous note
+		}
+		if (sonority_array.at(i).get_note_motion(voice).second != 0) {
+			return i;
+			// Search until note is stationary, then return that note
+		}
+	}
+	return current_sonority_index; // If no match, current sonority is the result
+}
+
+const bool are_upbeat_parallels_legal(const SonorityArray& sonority_array, const std::vector<int>& index_array, const Sonority& current_sonority, const int note_1_index, const int note_2_index) {
+	// Allow if there is a consonant suspension between the parallels
+	{
+		for (int voice{ 0 }; voice < 2; ++voice) {
+/* Not actually sure if this is a rule
+			if (sonority_array.at(get_note_start_index(note_1_index, voice, sonority_array)).get_rhythmic_hierarchy() > sonority_array.at(note_2_index).get_rhythmic_hierarchy()) {
+				// If note 1 starts on a strong(er) beat, consonant suspension doesn't make the parallels legal
+				continue;
+			}
+*/
+
+			int consonant_suspension_start{ -1 };
+			for (int k{ note_1_index + 1 }; k < note_2_index; ++k) {
+				// Find intervening downbeat
+				if (sonority_array.at(index_array.at(k)).get_rhythmic_hierarchy() > current_sonority.get_rhythmic_hierarchy()) {
+					consonant_suspension_start = index_array.at(k);
+				}
+			}
+			if (consonant_suspension_start == -1) {
+				// No valid downbeat found. Terminate loop for both voices.
+				break;
+			}
+
+			const int consonant_suspension_end{ get_note_end_index(consonant_suspension_start, 0, sonority_array) };
+			if (sonority_array.at(consonant_suspension_start).is_dissonant() || sonority_array.at(consonant_suspension_end).is_dissonant()) {
+				// If consonant suspension isn't consonant, terminate loop for current voice
+				continue;
+			}
+			bool note_1_is_held{ true };
+			for (int k{ index_array.at(note_1_index) }; k < consonant_suspension_end; ++k) {
+				// Loop through all notes between current_sonority and the the end of the consonant suspension to make sure the suspension is held thorugh
+				if (sonority_array.at(k).get_note_motion(voice).second != 0) {
+					note_1_is_held = false;
+				}
+			}
+			if (!note_1_is_held) {
+				continue;
+			}
+#ifdef SHOW_COUNTERPOINT_CHECKS
+			std::cout << "consonant suspension legalizes perfect parallels\n";
+#endif // SHOW_COUNTERPOINT_CHECKS
+			return true;
+		}
+	}
+
+	// Allow if each of the notes forming the parallel is approached from a different direction.
+	for (int voice{ 0 }; voice < 2; ++voice) {
+		if ((sonority_array.at(index_array.at(note_1_index) - 1).get_note_motion(voice).second * sonority_array.at(index_array.at(note_2_index) - 1).get_note_motion(voice).second < 0)
+			|| (get_interval(sonority_array.at(index_array.at(note_1_index - 1)).get_note(voice), sonority_array.at(index_array.at(note_1_index)).get_note(voice), true).second
+				* get_interval(sonority_array.at(index_array.at(note_2_index - 1)).get_note(voice), sonority_array.at(index_array.at(note_2_index)).get_note(voice), true).second
+				< 0)
+			// First line checks each voice, checks whether the notes before the perfect parallels (regardless of rhythmic hierarchy) approach from opposite directions
+			// Other lines do the same but for notes of equal or greater rhythmic hierarchy immediately before the sonorities comprising the perfect intervals
+			)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void check_voice_independence(const SonorityArray& sonority_array, std::vector<int> index_array, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const int ticks_per_measure, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat) {
 	for (int i{ 0 }; i < index_array.size() - 1; ++i) { // Subtract 1 because we don't want to check the last sonority
 		const Sonority& current_sonority{ sonority_array.at(index_array.at(i)) };
@@ -109,39 +196,15 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		for (int j{ i + 1 }; j < index_array.size(); ++j) {
 			const Sonority& next_upbeat{ sonority_array.at(index_array.at(j)) };
 			if (next_upbeat.get_rhythmic_hierarchy() == current_sonority.get_rhythmic_hierarchy()) {
-
-				// Allow if each of the notes forming the parallel is approached from a different direction.
-				{
-					// Voice 1
-					if ((sonority_array.at(index_array.at(i) - 1).get_note_1_motion().second * sonority_array.at(index_array.at(j) - 1).get_note_1_motion().second < 0)
-						|| (get_interval(sonority_array.at(index_array.at(i - 1)).get_note_1(), sonority_array.at(index_array.at(i)).get_note_1(), true).second
-							* get_interval(sonority_array.at(index_array.at(j - 1)).get_note_1(), sonority_array.at(index_array.at(j)).get_note_1(), true).second
-							< 0)
-						// First line checks each voice, checks whether the notes before the perfect parallels (regardless of rhythmic hierarchy) approach from opposite directions
-						// Other lines do the same but for notes of equal or greater rhythmic hierarchy immediately before the sonorities comprising the perfect intervals
-						)
-					{
-						break;
-					}
-
-					// Same thing for voice 2. Can't use loop because we need break
-					if ((sonority_array.at(index_array.at(i) - 1).get_note_2_motion().second * sonority_array.at(index_array.at(j) - 1).get_note_2_motion().second < 0)
-						|| (get_interval(sonority_array.at(index_array.at(i - 1)).get_note_2(), sonority_array.at(index_array.at(i)).get_note_2(), true).second
-							* get_interval(sonority_array.at(index_array.at(j - 1)).get_note_2(), sonority_array.at(index_array.at(j)).get_note_2(), true).second
-							< 0)
-						// First line checks each voice, checks whether the notes before the perfect parallels (regardless of rhythmic hierarchy) approach from opposite directions
-						// Other lines do the same but for notes of equal or greater rhythmic hierarchy immediately before the sonorities comprising the perfect intervals
-						)
-					{
-						break;
-					}
-				}
-
 				if (current_sonority.get_simple_interval().second == 7 && next_upbeat.get_simple_interval().second == 7) {
-					send_error_message(Message{ "Parallel fifths between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
+					if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j)) {
+						send_error_message(Message{ "Parallel fifths between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
+					}
 				} else
 				if (current_sonority.get_simple_interval().first == 0 && next_upbeat.get_simple_interval().first == 0) {
-					send_error_message(Message{ "Parallel octaves between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
+					if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j)) {
+						send_error_message(Message{ "Parallel octaves between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
+					}
 				}
 				break;
 			}
@@ -170,30 +233,6 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		}
 
 	}
-}
-
-const int get_note_start_index(const int current_sonority_index, const int voice, const SonorityArray& sonority_array) {
-	for (int i{ current_sonority_index - 1 }; i >= 0; --i) {
-		if ((sonority_array.at(i).get_note_motion(voice).second != 0) || sonority_array.at(i).get_note(voice).isRest) {
-			return i + 1;
-			// Search until note isn't stationary or is a rest, then return the next note
-		}
-	}
-	return current_sonority_index; // If no match, current sonority is the result
-}
-
-const int get_note_end_index(const int current_sonority_index, const int voice, const SonorityArray& sonority_array) {
-	for (int i{ current_sonority_index }; i < sonority_array.size(); ++i) {
-		if (sonority_array.at(i).get_note(voice).isRest) {
-			return i - 1;
-			// If encountering a rest, return the previous note
-		}
-		if (sonority_array.at(i).get_note_motion(voice).second != 0) {
-			return i;
-			// Search until note is stationary, then return that note
-		}
-	}
-	return current_sonority_index; // If no match, current sonority is the result
 }
 
 const int max_rhythmic_hierarchy(const int first_note_start_sonority_index, const int second_note_sonority_index, const std::vector<int>& rhythmic_hierarchy_array) {

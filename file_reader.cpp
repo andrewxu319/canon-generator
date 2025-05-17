@@ -35,6 +35,16 @@ const std::string read_file(const std::string& path) { // const
 	// destructor will close the file
 }
 
+const bool is_measure_empty(const mx::api::VoiceData voice) {
+    for (const mx::api::NoteData& note : voice.notes) {
+        if (!note.isRest) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 const mx::api::ScoreData get_score_object(const std::string& xml) {
     // create a reference to the singleton which holds documents in memory for us
     auto& mgr = mx::api::DocumentManager::getInstance();
@@ -46,10 +56,33 @@ const mx::api::ScoreData get_score_object(const std::string& xml) {
     const auto documentID = mgr.createFromStream(istr);
 
     // get the structural representation of the score from the document manager
-    const auto score = mgr.getData(documentID);
+    auto score = mgr.getData(documentID);
 
     // we need to explicitly destroy the document from memory
     mgr.destroyDocument(documentID);
+
+    auto& score_measures { score.parts.at(0).measures };
+
+
+    // delete empty starting measures
+    while (score_measures.size() > 0) {
+        if (is_measure_empty(score_measures.at(0).staves.at(0).voices.at(0))) {
+            score_measures.erase(score_measures.begin());
+        }
+        else {
+            break;
+        }
+    }
+
+    // delete empty trailing measures
+    while (score_measures.size() > 0) {
+        if (is_measure_empty(score_measures.back().staves.at(0).voices.at(0))) {
+            score_measures.pop_back();
+        }
+        else {
+            break;
+        }
+    }
 
     return score;
 }

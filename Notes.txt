@@ -6,7 +6,8 @@ TODO
 - enums for interval names
 - augmented & diminished intervals are dissonant
 - make message a class so it can take an optional number of parameters
-- consecutive octaves w consonant suspensions between them is acceptable https://www.youtube.com/watch?v=g-4dw1T3v30
+- consecutive octaves w consonant suspensions between them is acceptable https://www.youtube.com/watch?v=g-4dw1T3v30 3:26
+- "versatility" score
 
 7-8 in lower voices are an error
 
