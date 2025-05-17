@@ -82,6 +82,23 @@ const mx::api::NoteData create_rest(const int ticks, const int ticks_per_measure
 	return rest;
 }
 
+const mx::api::MeasureData create_measure(const mx::api::NoteData& measure_long_rest, mx::api::MeasureData template_measure) {
+	for (mx::api::StaffData& staff : template_measure.staves) {
+		staff.voices.at(0).notes = std::vector<mx::api::NoteData>{};
+		staff.voices.at(0).notes.emplace_back(measure_long_rest);
+	}
+	return template_measure;
+}
+
+/*
+const mx::api::BarlineData create_barline() {
+	mx::api::BarlineData barline{};
+	barline.barlineType = mx::api::BarlineType::lightLight;
+	barline.location = mx::api::HorizontalAlignment::right;
+	return barline;
+}
+*/
+
 const mx::api::PartData extend_part_length(mx::api::PartData part, int additional_measures, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& rest) {
 	part.measures.back().barlines = std::vector<mx::api::BarlineData>{};
 
@@ -261,11 +278,12 @@ const mx::api::PartData voice_array_to_part(const mx::api::ScoreData& score, Voi
 
 const mx::api::ScoreData create_output_score(mx::api::ScoreData score, const std::vector<mx::api::PartData>& parts) { // "score" is template score. add follower(s) to original score
 	score.parts = std::vector<mx::api::PartData>{}; // Clear parts list in score
-	for (std::size_t i{ 0 }; i < parts.size(); ++i) {
-		mx::api::PartData follower_part{ parts[i] }; // Makes copy
+	for (int i{ 0 }; i < parts.size(); ++i) {
+		mx::api::PartData follower_part{ parts.at(i)}; // Makes copy
 		follower_part.uniqueId = 'P' + std::to_string(i + 1); // P1 is leader, P2 is first follower
 		score.parts.emplace_back(follower_part);
 	}
+
 	return score; // temp
 }
 
@@ -378,17 +396,21 @@ int main() {
 		const int ticks_per_measure{ last_note.tickTimePosition + last_note.durationData.durationTimeTicks };
 		const int leader_length_ticks{ ticks_per_measure * static_cast<int>(score.parts.at(0).measures.size()) };
 		const mx::api::NoteData measure_long_rest{ create_rest(ticks_per_measure, ticks_per_measure, time_signature) };
+		const mx::api::MeasureData empty_measure{ create_measure(measure_long_rest, score.parts.at(0).measures.back()) };
+		//const mx::api::BarlineData double_barline{ create_barline() };
 
 #ifndef SINGLE_SHIFT_CHECK
-		std::vector<Voice> valid_textures_sequence(2); // At least two voices
-		int num_voices{ 2 }; // Loop increment this later
 		// TODO: FORBID VOICE CROSSINGS
+
+		std::vector<mx::api::PartData> valid_textures_parts_sequence(settings::max_parts);
 
 		for (int h_shift{ 1 }; h_shift < 4; ++h_shift) { // h_shift < leader_length_ticks / settings::leader_length_over_max_h_shift
 			// Create follower (LOOP THIS)
-			std::vector<Voice> voices_array(num_voices); // For this one texture
+			std::vector<Voice> voices_array(settings::max_parts); // For this one texture
 			voices_array.at(0) = leader;
 
+		// All of this will change when we add more voices
+		// {
 			int v_shift{ 0 };
 			const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
 			voices_array.at(1) = follower;
@@ -397,6 +419,7 @@ int main() {
 			for (int i{ 0 }; i < (h_shift / ticks_per_measure + 1); ++i) {
 				voices_array.at(0).emplace_back(measure_long_rest);
 			}
+		// }
 
 			// For every voice, generate per-tick note data. MAKES COPIES
 			std::vector<std::vector<mx::api::NoteData>> notes_by_tick(voices_array.size()); // Indexed by tick. Ordering of voices doesn't really matter
@@ -453,8 +476,9 @@ int main() {
 			// Check counterpoint
 			//const auto grade{ check_counterpoint(stripped_sonority_array, index_arrays_for_sonority_arrays, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
 
+/*
 			// Add new texture to valid textures sequence
-			for (int voice{ 0 }; voice < num_voices; ++voice) {
+			for (int voice{ 0 }; voice < settings::max_parts; ++voice) {
 				if (valid_textures_sequence.size() <= voice) {
 					for (int i{ 0 }; i < valid_textures_sequence.at(0).size(); ++i) {
 						// Fill new voice with empty measures until it matches the length of the valid textures sequence so far
@@ -469,15 +493,44 @@ int main() {
 					valid_textures_sequence.at(voice).emplace_back(measure_long_rest);
 				}
 			}
+*/
 
-			// Create musicxml
+// Create musicxml
 			const mx::api::PartData& original_leader_part{ score.parts.at(0) };
 			//const mx::api::PartData leader_part{ extend_part_length(original_leader_part, original_leader_part.measures.size(), original_leader_part.measures.at(0).timeSignature, ticks_per_measure) };
 			const mx::api::PartData leader_part{ original_leader_part };
 
-			std::vector<mx::api::PartData> parts_array;
-			for (int i{ 0 }; i < valid_textures_sequence.size(); ++i) {
-				parts_array.emplace_back(voice_array_to_part(score, valid_textures_sequence.at(i), ticks_per_measure, time_signature, measure_long_rest)); // Need a function to fix barlines
+			std::vector<mx::api::PartData> parts_array(voices_array.size());
+			parts_array.at(0) = leader_part;
+			for (int i{ 1 }; i < voices_array.size(); ++i) { // Skip first because first is leader part
+				if (voices_array.at(i).size() == 0) {
+					for (int j{ 0 }; j < voices_array.at(0).size(); ++j) { // Add a number of empty measures equal to length of leader
+						voices_array.at(i).emplace_back(measure_long_rest);
+					}
+				}
+				parts_array.at(i) = voice_array_to_part(score, voices_array.at(i), ticks_per_measure, time_signature, measure_long_rest); // Need a function to fix barlines
+			}
+
+			// Extend every part to the same length
+			int longest_part_size{ 0 };
+			for (const mx::api::PartData& part : parts_array) { // Get longest part
+				if (part.measures.size() > longest_part_size) {
+					longest_part_size = part.measures.size();
+				}
+			}
+			for (mx::api::PartData& part : parts_array) {
+				part = extend_part_length(part, longest_part_size - part.measures.size(), time_signature, measure_long_rest);
+			}
+
+			for (int part{ 0 }; part < settings::max_parts; ++part) {
+				for (const mx::api::MeasureData& measure : parts_array.at(part).measures) {
+					// For each part, add each note to valid_textures_sequence
+					valid_textures_parts_sequence.at(part).measures.emplace_back(measure);
+				}
+				//valid_textures_parts_sequence.at(part).measures.back().barlines.push_back(double_barline);
+				for (int i{ 0 }; i < settings::measures_separation_between_output_textures; ++i) {
+					valid_textures_parts_sequence.at(part).measures.emplace_back(empty_measure);
+				}
 			}
 		}
 #endif // n SINGLE_SHIFT_CHECK
@@ -577,7 +630,6 @@ int main() {
 		for (int i{ 1 }; i < voices_array.size(); ++i) { // Skip first because first is leader part
 			parts_array.emplace_back(voice_array_to_part(score, voices_array.at(i), ticks_per_measure, time_signature)); // Need a function to fix barlines
 		}
-#endif // SINGLE_SHIFT_CHECK
 
 		// Extend every part to the same length
 		int longest_part_size{ 0 };
@@ -589,8 +641,22 @@ int main() {
 		for (mx::api::PartData& part : parts_array) {
 			part = extend_part_length(part, longest_part_size - part.measures.size(), time_signature, measure_long_rest);
 		}
+#endif // SINGLE_SHIFT_CHECK
 
-		const mx::api::ScoreData output_score{ create_output_score(score, parts_array) }; // add follower(s) to original score
+		// Remove extra time signatures and clefs
+		for (mx::api::PartData& part : valid_textures_parts_sequence) {
+			for (int i{ 1 }; i < part.measures.size(); ++i) {
+				// Start at second measure
+				mx::api::MeasureData& measure{ part.measures.at(i) };
+				//measure.barlines = std::vector<mx::api::BarlineData>{};
+				measure.timeSignature.isImplicit = true;
+				for (mx::api::StaffData& staff: measure.staves) {
+					staff.clefs = std::vector<mx::api::ClefData>{};
+				}
+			}
+		}
+
+		const mx::api::ScoreData output_score{ create_output_score(score, valid_textures_parts_sequence) }; // add follower(s) to original score
 
 		//// Write file
 		write_file(output_score, settings::write_file_path); // output_score

@@ -8,7 +8,7 @@
     <creator type="composer">Composer / arranger</creator>
     <encoding>
       <software>MuseScore 4.5.1</software>
-      <encoding-date>2025-05-16</encoding-date>
+      <encoding-date>2025-05-17</encoding-date>
       <supports element="accidental" type="yes"/>
       <supports element="beam" type="yes"/>
       <supports element="print" attribute="new-page" type="no"/>
@@ -72,11 +72,6 @@
         </note>
       </measure>
     <measure number="2">
-      <direction placement="above">
-        <direction-type>
-          <words>4</words>
-          </direction-type>
-        </direction>
       <note>
         <pitch>
           <step>E</step>
@@ -99,6 +94,9 @@
         <type>quarter</type>
         <stem>down</stem>
         </note>
+      <barline location="right">
+        <bar-style>light-light</bar-style>
+        </barline>
       </measure>
     <measure number="3">
       <note>
@@ -106,6 +104,9 @@
         <duration>4</duration>
         <voice>1</voice>
         </note>
+      <barline location="right">
+        <bar-style>light-light</bar-style>
+        </barline>
       </measure>
     <measure number="4">
       <note>
@@ -136,6 +137,20 @@
         </note>
       </measure>
     <measure number="8">
+      <note>
+        <rest measure="yes"/>
+        <duration>4</duration>
+        <voice>1</voice>
+        </note>
+      </measure>
+    <measure number="9">
+      <note>
+        <rest measure="yes"/>
+        <duration>4</duration>
+        <voice>1</voice>
+        </note>
+      </measure>
+    <measure number="10">
       <note>
         <rest measure="yes"/>
         <duration>4</duration>
