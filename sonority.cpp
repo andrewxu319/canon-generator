@@ -3,7 +3,7 @@
 #include "sonority.h"
 
 Sonority::Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const int rhythmic_hierarchy, const int id)
-	: m_note_1{ note_1 }, m_note_2{ note_2 }, m_rhythmic_hierarchy{ rhythmic_hierarchy }, m_id{ id } {
+	: m_note_1{ note_1 }, m_note_2{ note_2 }, m_rhythmic_hierarchy{ rhythmic_hierarchy }, m_index{ id } {
 	//m_compound_interval = get_interval(m_note_1, m_note_2, false);
 	//m_simple_interval = m_compound_interval;
 }
@@ -11,7 +11,8 @@ Sonority::Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& not
 const bool Sonority::is_dissonant() const {
 	Interval interval{ get_simple_interval() };
 
-	if ((interval.first == 1) || (interval.first == 6) || (interval.second == 6)) {
+	if ((interval.first == 1) || (interval.first == 6)) {
+		// Treat the Aug 4 and Dim 5 as consonant if not involving bass.
 		return true;
 	}
 
@@ -87,6 +88,7 @@ const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData
 	Interval simple_interval{ get_interval(note_1, note_2, false) };
 
 	if ((simple_interval.first % 7 == 1) || (simple_interval.first % 7 == 6)){
+		// Exempt augmented unisons since raised/lowered leading tones are weird and glitchy
 		// || (simple_interval.second % 12 == 6)
 		// Treat the Aug 4 and Dim 5 as consonant if not involving bass.
 		return true;
@@ -96,7 +98,7 @@ const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData
 }
 
 const bool is_identical(const Sonority& sonority_1, const Sonority& sonority_2) {
-	const bool note_1_identical{ (sonority_1.get_note_1().pitchData == sonority_2.get_note_1().pitchData) && (sonority_1.get_note_1().isRest == sonority_2.get_note_1().isRest) };
-	const bool note_2_identical{ (sonority_1.get_note_2().pitchData == sonority_2.get_note_2().pitchData) && (sonority_1.get_note_2().isRest == sonority_2.get_note_2().isRest) };
-	return note_1_identical && note_2_identical;
+	const bool note_1_indexentical{ (sonority_1.get_note_1().pitchData == sonority_2.get_note_1().pitchData) && (sonority_1.get_note_1().isRest == sonority_2.get_note_1().isRest) };
+	const bool note_2_indexentical{ (sonority_1.get_note_2().pitchData == sonority_2.get_note_2().pitchData) && (sonority_1.get_note_2().isRest == sonority_2.get_note_2().isRest) };
+	return note_1_indexentical && note_2_indexentical;
 }

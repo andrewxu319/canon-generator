@@ -2,11 +2,13 @@ INPUT REQUIREMENTS
 - Each measure must have the same key signature
 
 TODO
-- make voices iterable
-- fix anticipations
+- get key
 - enums for interval names
 - augmented & diminished intervals are dissonant
 - make message a class so it can take an optional number of parameters
+- consecutive octaves w consonant suspensions between them is acceptable https://www.youtube.com/watch?v=g-4dw1T3v30
+
+7-8 in lower voices are an error
 
 PLANNING
 - read musicxml---each voice is an ARRAY OF PITCHES with duration = shortest note

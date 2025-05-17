@@ -142,7 +142,7 @@ Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, co
 	return output_voice;
 }
 
-const Voice shift(Voice voice, const int v_shift, const int h_shift, const int fifths, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy
+const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::vector<int>& key_signature, const ScaleDegree leading_tone, const bool minor_key, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy
 	// Vertical shift
 	if (v_shift != 0) {
 		for (mx::api::NoteData& note : voice) {
@@ -164,8 +164,12 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const int f
 				}
 			}
 
-			// // Key signature
-			note.pitchData.alter = alters_by_key(fifths)[static_cast<int>(note.pitchData.step)];
+			// Key signature
+			note.pitchData.alter = key_signature[static_cast<int>(note.pitchData.step)];
+			if (minor_key && (note.pitchData.step == leading_tone.step)) {
+				// If minor key & note is the 7th
+				++note.pitchData.alter;
+			}
 		}
 	}
 
@@ -261,10 +265,10 @@ const mx::api::ScoreData create_output_score(mx::api::ScoreData score, const std
 	return score; // temp
 }
 
-const int second_highest_notes_by_tick_lengths(const std::vector<std::vector<mx::api::NoteData>>& notes_by_tick_for_all_voices) {
+const int second_highest_notes_by_tick_lengths(const std::vector<std::vector<mx::api::NoteData>>& notes_by_tick) {
 	// Get second highest notes-by-tick length (need two voices to counterpoint)
 	std::vector<int> notes_by_tick_lengths{};
-	for (const Voice& voice : notes_by_tick_for_all_voices) {
+	for (const Voice& voice : notes_by_tick) {
 		notes_by_tick_lengths.push_back(voice.size());
 	}
 	std::sort(notes_by_tick_lengths.begin(), notes_by_tick_lengths.end(), std::greater<int>());
@@ -332,13 +336,36 @@ const std::vector<int> create_rhythmic_hierarchy_array(const int ticks_per_measu
 	return rhythmic_hierarchy;
 }
 
+const ScaleDegree get_tonic(const int fifths, const bool minor_key) {
+	int step{ 4 * fifths };
+	if (minor_key) {
+		step -= 2;
+	}
+	step = (step % 7 + 7) % 7; // Fix octaves. Extra +7 to fix negative output for %
+	const int alter{ alters_by_key(fifths).at(step) };
+	return ScaleDegree{ static_cast<mx::api::Step>(step), alter };
+}
+
 int main() {
 	try {
-		// // Read file
+		// Read file
 		const std::string& xml{ read_file(settings::read_file_path) };
 		const mx::api::ScoreData& score{ get_score_object(xml) };
-		const int fifths{ score.parts.at(0).measures.at(0).keys.at(0).fifths }; // Key signature
 		const Voice leader{ create_voice_array(score) };
+
+		// Key signature
+		const int fifths{ score.parts.at(0).measures.at(0).keys.at(0).fifths };
+		const bool minor_key{ settings::minor_key };
+		const std::vector<int> key_signature{ alters_by_key(fifths) };
+
+
+		// Scale degrees
+		const ScaleDegree tonic{ get_tonic(fifths, settings::minor_key) };
+		const int tonic_step{ static_cast<int>(tonic.step) };
+		const int dominant_step{ (tonic_step + 4) % 7 };
+		const ScaleDegree dominant{ static_cast<mx::api::Step>(dominant_step), alters_by_key(fifths).at(dominant_step) + 1 };
+		const int leading_tone_step{ (tonic_step + 6) % 7 };
+		const ScaleDegree leading_tone{ static_cast<mx::api::Step>(leading_tone_step), alters_by_key(fifths).at(leading_tone_step) + 1 };
 
 		// Get time signature
 		const mx::api::TimeSignatureData& time_signature{ score.parts.at(0).measures.at(0).timeSignature };
@@ -354,21 +381,38 @@ int main() {
 
 		// LOOP HERE (and multiple followers)
 		int v_shift{ 0 };
-		int h_shift{ 8 };
-		const Voice follower{ shift(leader, v_shift, h_shift, fifths, ticks_per_measure, time_signature) }; // const
+		int h_shift{ 64 };
+		const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
 		voices_array.emplace_back(follower);
 
 		// For every voice, generate per-tick note data. MAKES COPIES
-		std::vector<std::vector<mx::api::NoteData>> notes_by_tick_for_all_voices{}; // Indexed by tick. Ordering of voices doesn't really matter
-		for (Voice voice : voices_array) {
-			std::vector<mx::api::NoteData> notes_by_tick_for_voice{};
-			for (const mx::api::NoteData& note : voice) {
+		std::vector<std::vector<mx::api::NoteData>> notes_by_tick(voices_array.size()); // Indexed by tick. Ordering of voices doesn't really matter
+		std::vector<std::vector<int>>leading_tone_locations(voices_array.size());
+		for (int i{ 0 }; i < voices_array.size(); ++i) {
+			std::vector<mx::api::NoteData> notes_by_tick_for_voice{}; // TODO: predetermine vector size
+			for (const mx::api::NoteData& note : voices_array.at(i)) {
 				for (int i{ 0 }; i < note.durationData.durationTimeTicks; ++i) { // Append as many times as the number of ticks the note lasts for
 					notes_by_tick_for_voice.emplace_back(note);
 				}
 			}
-			notes_by_tick_for_all_voices.emplace_back(notes_by_tick_for_voice);
+			notes_by_tick.at(i) = (notes_by_tick_for_voice);
 		}
+
+/*
+		// Get leading tone locations
+		if (minor_key) {
+			leading_tone_locations.at(0) = std::vector<int>{}; // Leader voice gets an empty array
+			for (int i{ 1 }; i < voices_array.size(); ++i) {
+				std::vector<int>leading_tone_locations_in_voice{};
+				for (int j{ 0 }; j < notes_by_tick.at(i).size(); ++j) {
+					if (static_cast<int>(notes_by_tick.at(i).at(j).pitchData.step) == leading_tone.step && notes_by_tick.at(i).at(j).pitchData.alter == leading_tone.alter) {
+						leading_tone_locations_in_voice.push_back(j);
+					}
+				}
+				leading_tone_locations.at(i) = leading_tone_locations_in_voice;
+			}
+		}
+*/
 
 		// Generate rhythmic hierarchy
 		const std::vector<int> rhythmic_hierarchy_array{create_rhythmic_hierarchy_array(ticks_per_measure, time_signature)};
@@ -379,41 +423,39 @@ int main() {
 	// FOR EACH PAIR OF VOICES {
 	// (different pairs of voices will have different strippings)
 		// Generate raw unstripped sonority array
-		Voice& voice_1{ notes_by_tick_for_all_voices.at(0) }; // temp
-		Voice& voice_2{ notes_by_tick_for_all_voices.at(1) }; // temp
+		Voice& voice_1{ notes_by_tick.at(0) }; // temp
+		Voice& voice_2{ notes_by_tick.at(1) }; // temp
 		SonorityArray raw_sonority_array{};
-		for (int i{ 0 }; i < second_highest_notes_by_tick_lengths(notes_by_tick_for_all_voices); ++i) {
+		for (int i{ 0 }; i < second_highest_notes_by_tick_lengths(notes_by_tick); ++i) {
 			raw_sonority_array.emplace_back(Sonority{ voice_1.at(i), voice_2.at(i), rhythmic_hierarchy_array.at(i % ticks_per_measure), i });
 		}
 
 		// Generate downbeat sonority arrays
-		std::vector<SonorityArray> sonority_arrays{};
+		SonorityArray stripped_sonority_array{};
+		for (int i{ 0 }; i < raw_sonority_array.size() - 1; ++i) { // Always push the first
+			if (!is_identical(raw_sonority_array.at(i), raw_sonority_array.at(i + 1))) {
+				stripped_sonority_array.emplace_back(raw_sonority_array.at(i + 1));
+			}
+		}
+
+		for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
+			stripped_sonority_array.at(i).build_motion_data(stripped_sonority_array.at(i + 1));
+		}
+
+		std::vector<std::vector<int>> index_arrays_for_sonority_arrays{};
 		for (int depth{ 0 }; depth <= rhythmic_hierarchy_max_depth; ++depth) {
-			SonorityArray unstripped_sonority_array{};
-			for (int i{ 0 }; i < raw_sonority_array.size(); ++i) {
-				if (depth <= raw_sonority_array.at(i).get_rhythmic_hierarchy()) {
-					unstripped_sonority_array.emplace_back(raw_sonority_array.at(i));
+			std::vector<int> index_array_at_depth{};
+			for (int i{ 0 }; i < stripped_sonority_array.size(); ++i) {
+				if (depth <= stripped_sonority_array.at(i).get_rhythmic_hierarchy()) {
+					index_array_at_depth.emplace_back(i);
 				}
 			}
 
-			SonorityArray stripped_sonority_array{};
-			stripped_sonority_array.emplace_back(unstripped_sonority_array.at(0));
-			for (int i{ 0 }; i < unstripped_sonority_array.size() - 1; ++i) { // Always push the first
-				if (!is_identical(unstripped_sonority_array.at(i), unstripped_sonority_array.at(i + 1))) {
-					stripped_sonority_array.emplace_back(unstripped_sonority_array.at(i + 1));
-				}
-			}
-
-			for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
-				stripped_sonority_array.at(i).build_motion_data(stripped_sonority_array.at(i + 1));
-			}
-
-			sonority_arrays.emplace_back(stripped_sonority_array);
+			index_arrays_for_sonority_arrays.emplace_back(index_array_at_depth);
 		}
 
 		// Check counterpoint
-		const auto grade{ check_counterpoint(sonority_arrays, ticks_per_measure, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
-
+		const auto grade{ check_counterpoint(stripped_sonority_array, index_arrays_for_sonority_arrays, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
 	// }
 
 		// Create musicxml

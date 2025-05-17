@@ -23,8 +23,8 @@ public:
 	void build_motion_data(Sonority& next_sonority);
 	const MotionType get_motion_type() const;
 
-	const int get_id() const {
-		return m_id;
+	const int get_index() const {
+		return m_index;
 	}
 
 	const mx::api::NoteData& get_note_1() const {
@@ -80,7 +80,7 @@ public:
 	}
 
 private:
-	const int m_id{}; // FIX
+	const int m_index{}; // FIX
 	const mx::api::NoteData& m_note_1{ mx::api::NoteData{} };
 	const mx::api::NoteData& m_note_2{ mx::api::NoteData{} };
 	const Interval m_compound_interval{ get_interval(m_note_1, m_note_2, false) };
