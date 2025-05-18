@@ -119,16 +119,19 @@ const bool are_upbeat_parallels_legal(const SonorityArray& sonority_array, const
 
 	// Allow if each of the notes forming the parallel is approached from a different direction.
 	for (int voice{ 0 }; voice < 2; ++voice) {
-		if ((sonority_array.at(index_array.at(note_1_index) - 1).get_note_motion(voice).second * sonority_array.at(index_array.at(note_2_index) - 1).get_note_motion(voice).second < 0)
-			|| (get_interval(sonority_array.at(index_array.at(note_1_index - 1)).get_note(voice), sonority_array.at(index_array.at(note_1_index)).get_note(voice), true).second
-				* get_interval(sonority_array.at(index_array.at(note_2_index - 1)).get_note(voice), sonority_array.at(index_array.at(note_2_index)).get_note(voice), true).second
-				< 0)
-			// First line checks each voice, checks whether the notes before the perfect parallels (regardless of rhythmic hierarchy) approach from opposite directions
-			// Other lines do the same but for notes of equal or greater rhythmic hierarchy immediately before the sonorities comprising the perfect intervals
-			)
-		{
-			return true;
+		try {
+			if ((sonority_array.at(index_array.at(note_1_index) - 1).get_note_motion(voice).second * sonority_array.at(index_array.at(note_2_index) - 1).get_note_motion(voice).second < 0)
+				|| (get_interval(sonority_array.at(index_array.at(note_1_index - 1)).get_note(voice), sonority_array.at(index_array.at(note_1_index)).get_note(voice), true).second
+					* get_interval(sonority_array.at(index_array.at(note_2_index - 1)).get_note(voice), sonority_array.at(index_array.at(note_2_index)).get_note(voice), true).second
+					< 0)
+				// First line checks each voice, checks whether the notes before the perfect parallels (regardless of rhythmic hierarchy) approach from opposite directions
+				// Other lines do the same but for notes of equal or greater rhythmic hierarchy immediately before the sonorities comprising the perfect intervals
+				)
+			{
+				return true;
+			}
 		}
+		catch(...){}
 	}
 
 	return false;

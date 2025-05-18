@@ -7,6 +7,12 @@ namespace settings {
 	inline const std::string& write_file_path{ "C:/Users/spagh/Desktop/brain rot/C++/canon_generator/output.musicxml" };
 	inline const int minor_key{ true };
 	inline const int max_parts{ 3 };
-	inline const int measures_separation_between_output_textures{ 2 };
-	inline const int leader_length_over_max_h_shift{ 3 };
+	inline const int octave_shift{ -1 };
+	inline const int h_shift_increments_per_beat{ 1 };
+	inline const int measures_separation_between_output_textures{ 0 };
+	inline const int leader_length_over_max_h_shift{ 1 };
+	//inline const double warning_weight{ 0.5 }; // Not sure when you would need to use this
+	inline const std::size_t error_threshold{ 0 };
+	inline const std::size_t warning_threshold{ 0 };
+	//inline const double combined_threshold{-1};
 }
