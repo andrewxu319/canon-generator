@@ -1,7 +1,12 @@
-INPUT REQUIREMENTS
+INPUT CHECKS
 - Each measure must have the same key signature
 
+RANDOM NOTES
+- slowest part seems to be generating the xml/part data
+
 TODO
+- FIX 6/8 TIME SIGNATURE
+- use texture objects instead of multiple parallel arrays
 - get key
 - enums for interval names
 - augmented & diminished intervals are dissonant

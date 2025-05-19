@@ -6,7 +6,7 @@
 #include <iostream>
 #include <cmath>
 
-#define SHOW_COUNTERPOINT_CHECKS
+//#define SHOW_COUNTERPOINT_CHECKS
 
 void print_messages(std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box) {
 	if (error_message_box.size() == 0 && warning_message_box.size() == 0) {
@@ -652,7 +652,9 @@ const std::pair<std::vector<Message>, std::vector<Message>>
 	}
 	check_dissonance_handling(sonority_array, error_messages, warning_messages, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array); // Only check lowest level
 
+#ifdef SHOW_COUNTERPOINT_CHECKS
 	print_messages(error_messages, warning_messages);
+#endif // SHOW_COUNTERPOINT_CHECKS
 
 	return { error_messages, warning_messages };
 }

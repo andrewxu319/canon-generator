@@ -18,6 +18,7 @@
 //#define SINGLE_SHIFT_CHECK
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
+using Texture = std::vector<Voice>;
 
 const std::vector<int> alters_by_key(const int fifths) {
 	std::vector<int> alters_array{ 0, 0, 0, 0, 0, 0, 0 };
@@ -91,10 +92,10 @@ const mx::api::MeasureData create_measure(const mx::api::NoteData& measure_long_
 	return template_measure;
 }
 
-const mx::api::DirectionData create_shift_label(const int h_shift, const int v_shift, const int warnings_count) {
+const mx::api::DirectionData create_texture_label(const int warnings_count) {
 	mx::api::DirectionData direction{};
 	direction.words.emplace_back(mx::api::WordsData{});
-	direction.words.back().text = "Horizontal shift: " + std::to_string(h_shift) + "\nVertical shift: " + std::to_string(v_shift) + "\nWarnings count: " + std::to_string(warnings_count);
+	direction.words.back().text = "Warnings count: " + std::to_string(warnings_count);
 	return direction;
 }
 
@@ -108,17 +109,22 @@ const mx::api::BarlineData create_barline() {
 const mx::api::PartData extend_part_length(mx::api::PartData part, int additional_measures, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& rest) {
 	part.measures.back().barlines = std::vector<mx::api::BarlineData>{};
 
+	if (additional_measures == 0) {
+		return part;
+	}
+
 	mx::api::StaffData staff{ part.measures.at(0).staves.at(0) };
 	staff.clefs = std::vector<mx::api::ClefData>{};
 
 	staff.voices.at(0) = mx::api::VoiceData{};
 	staff.voices.at(0).notes.emplace_back(rest);
 
+	mx::api::MeasureData measure{};
+	measure.timeSignature = time_signature;
+	measure.timeSignature.isImplicit = true;
+	measure.staves.emplace_back(staff);
+
 	for (int i{ 0 }; i < additional_measures; ++i) { // Double length of part
-		mx::api::MeasureData measure{};
-		measure.timeSignature = time_signature;
-		measure.timeSignature.isImplicit = true;
-		measure.staves.emplace_back(staff);
 		part.measures.emplace_back(measure);
 	}
 
@@ -224,7 +230,7 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::
 			}
 
 			// Key signature
-			note.pitchData.alter = key_signature[static_cast<int>(note.pitchData.step)];
+			note.pitchData.alter = key_signature.at(static_cast<int>(note.pitchData.step));
 			if (minor_key && (note.pitchData.step == leading_tone.step)) {
 				// If minor key & note is the 7th
 				++note.pitchData.alter;
@@ -250,21 +256,23 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::
 		}
 	}
 
-	for (mx::api::NoteData& note : voice) {
-		note.pitchData.octave += settings::octave_shift;
-	}
+	//for (mx::api::NoteData& note : voice) {
+	//	note.pitchData.octave += settings::octave_shift;
+	//}
 
 	return voice;
 }
 
-const mx::api::PartData voice_array_to_part(const mx::api::ScoreData& score, Voice voice, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest) {
+const mx::api::PartData voice_array_to_part(const mx::api::ScoreData& score, Voice voice, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest, const int leader_length_measures) {
 	mx::api::PartData part{ score.parts.at(0) }; // Copy
-	part = extend_part_length(part, part.measures.size(), time_signature, measure_long_rest); // TODO: verify time signature doesn't change
+	part = extend_part_length(part, 2 * leader_length_measures - part.measures.size(), time_signature, measure_long_rest); // TODO: verify time signature doesn't change
 
 	// Remap measures
-	for (int i{ 0 }; i < part.measures.size(); ++i) { // Iterates through the measures
-		part.measures.at(i).staves.at(0).voices.at(0) = mx::api::VoiceData{};
+	for (mx::api::MeasureData& measure : part.measures) { // Iterates through the measures
+		measure.staves.at(0).voices.at(0) = mx::api::VoiceData{};
+	}
 
+	for (int i{ 0 }; i < part.measures.size(); ++i) {
 		for (int j{ 0 }; j < ticks_per_measure;) { // Increment j BEFORE erasing the first voice in array
 			const int ticks_to_barline{ ticks_per_measure - j };
 			if (ticks_to_barline < voice.at(0).durationData.durationTimeTicks) {
@@ -382,6 +390,119 @@ const ScaleDegree get_tonic(const int fifths, const bool minor_key) {
 	return ScaleDegree{ static_cast<mx::api::Step>(step), alter };
 }
 
+std::pair<std::vector<Texture>, std::vector<int>> generate_textures_for_new_voice(const std::vector<Texture>& template_textures_array, const std::vector<int>& starting_h_shift_array, const Voice& leader, const int leader_length_ticks, const int ticks_per_measure, const int ticks_per_beat, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::vector<int>& key_signature, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const bool minor_key, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest) {
+	std::vector<Texture> valid_textures_for_current_voice{};
+	std::vector<int> h_shift_array_for_current_voice{};
+	
+	for (int h{ 0 }; h < template_textures_array.size(); ++h) {
+		const Texture& template_texture{ template_textures_array.at(h) };
+
+		for (int h_shift{ starting_h_shift_array.at(h) + 1 }; h_shift <= leader_length_ticks / settings::leader_length_over_max_h_shift; ++h_shift) {
+
+			// Maximum h_shift increment because tick sizes are unpredictable for some reason
+			if (h_shift % (ticks_per_beat / settings::h_shift_increments_per_beat) != 0) {
+				continue;
+			}
+
+			for (int v_shift{ -1 }; v_shift >= -6; --v_shift) {
+
+				// Create follower (LOOP THIS)
+				std::vector<Voice> texture{ template_texture }; // For this one texture
+				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
+				texture.emplace_back(follower);
+
+				// Append empty measures to leader so both voices have the same number of complete measures
+				for (int i{ 0 }; i < texture.size() - 1; ++i) { // Skip last one (follower)
+					for (int j{ 0 }; j < (h_shift / ticks_per_measure + 1); ++j) {
+						texture.at(i).emplace_back(measure_long_rest);
+					}
+				}
+
+				// For every voice, generate per-tick note data. MAKES COPIES
+				std::vector<std::vector<mx::api::NoteData>> notes_by_tick(texture.size()); // Indexed by tick. Ordering of voices doesn't really matter
+				std::vector<std::vector<int>>leading_tone_locations(texture.size());
+				for (int i{ 0 }; i < texture.size(); ++i) {
+					std::vector<mx::api::NoteData> notes_by_tick_for_voice{}; // TODO: predetermine vector size
+					for (const mx::api::NoteData& note : texture.at(i)) {
+						for (int i{ 0 }; i < note.durationData.durationTimeTicks; ++i) { // Append as many times as the number of ticks the note lasts for
+							notes_by_tick_for_voice.emplace_back(note);
+						}
+					}
+					notes_by_tick.at(i) = (notes_by_tick_for_voice);
+				}
+
+				if (texture.size() == 4) {
+					std::cout << "hi";
+				}
+
+				// Get every unordered combination of two voices
+				std::vector<std::pair<int, int>> voice_pairs{};
+				for (int i{ 0 }; i < texture.size(); ++i) {
+					for (int j{ i + 1 }; j < texture.size(); ++j) {
+						voice_pairs.emplace_back(std::pair<int, int>{i, j});
+					}
+				}
+
+				// FOR EACH PAIR OF VOICES {
+				int error_count{ 0 };
+				int warning_count{ 0 };
+				for (const std::pair<int, int>& voice_pair : voice_pairs) {
+					// (different pairs of voices will have different strippings)
+						// Generate raw unstripped sonority array
+					const Voice& voice_1{ notes_by_tick.at(voice_pair.first) };
+					const Voice& voice_2{ notes_by_tick.at(voice_pair.second) };
+					SonorityArray raw_sonority_array{};
+					for (int i{ 0 }; i < voice_1.size() && i < voice_2.size(); ++i) {
+						raw_sonority_array.emplace_back(Sonority{ voice_1.at(i), voice_2.at(i), rhythmic_hierarchy_array.at(i % ticks_per_measure), i });
+					}
+					// Generate downbeat sonority arrays
+					SonorityArray stripped_sonority_array{};
+					for (int i{ 0 }; i < raw_sonority_array.size() - 1; ++i) { // Always push the first
+						if (!is_identical(raw_sonority_array.at(i), raw_sonority_array.at(i + 1))) {
+							stripped_sonority_array.emplace_back(raw_sonority_array.at(i + 1));
+						}
+					}
+
+					for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
+						stripped_sonority_array.at(i).build_motion_data(stripped_sonority_array.at(i + 1));
+					}
+
+					std::vector<std::vector<int>> index_arrays_for_sonority_arrays{};
+					for (int depth{ 0 }; depth <= rhythmic_hierarchy_max_depth; ++depth) {
+						std::vector<int> index_array_at_depth{};
+						for (int i{ 0 }; i < stripped_sonority_array.size(); ++i) {
+							if (depth <= stripped_sonority_array.at(i).get_rhythmic_hierarchy()) {
+								index_array_at_depth.emplace_back(i);
+							}
+						}
+
+						index_arrays_for_sonority_arrays.emplace_back(index_array_at_depth);
+					}
+
+					// Check counterpoint
+					const auto result{ check_counterpoint(stripped_sonority_array, index_arrays_for_sonority_arrays, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
+					error_count += result.first.size();
+					warning_count += result.second.size();
+				}
+
+				//const double score{ errors_count + settings::warning_weight * warnings_count }; // Not sure when you would need to use this
+				if (error_count > settings::error_threshold || warning_count > settings::warning_threshold) {
+#ifdef DEBUG
+					std::cout << "Texture rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
+#endif // DEBUG
+					continue;
+				}
+				else {
+					valid_textures_for_current_voice.emplace_back(texture);
+					h_shift_array_for_current_voice.push_back(h_shift);
+				}
+			}
+		}
+	}
+
+	return std::pair<std::vector<Texture>, std::vector<int>>{ valid_textures_for_current_voice, h_shift_array_for_current_voice };
+}
+
 int main() {
 	try {
 		// Read file
@@ -408,7 +529,8 @@ int main() {
 		// Calculate ticks per measure and initialize other variables
 		const mx::api::NoteData& last_note{ score.parts.at(0).measures.at(0).staves.at(0).voices.at(0).notes.back() }; // Use original score, before horizontal shifting
 		const int ticks_per_measure{ last_note.tickTimePosition + last_note.durationData.durationTimeTicks };
-		const int leader_length_ticks{ ticks_per_measure * static_cast<int>(score.parts.at(0).measures.size()) };
+		const int leader_length_measures{ static_cast<int>(score.parts.at(0).measures.size()) };
+		const int leader_length_ticks{ ticks_per_measure * leader_length_measures };
 		const mx::api::NoteData measure_long_rest{ create_rest(ticks_per_measure, ticks_per_measure, time_signature) };
 		const mx::api::MeasureData empty_measure{ create_measure(measure_long_rest, score.parts.at(0).measures.back()) };
 		const mx::api::BarlineData double_barline{ create_barline() };
@@ -422,152 +544,73 @@ int main() {
 #ifndef SINGLE_SHIFT_CHECK
 		// TODO: FORBID VOICE CROSSINGS
 
-		std::vector<mx::api::PartData> valid_textures_parts_sequence(settings::max_parts);
-		int valid_textures_counter{0};
+		/*
+		* have an array store a list of partdata
+		* add to the list of partdata every iteration
+		* clear template_textures_array , add to it every iteration
+		* the function would take existing voices and create a new follower
+		* loop until template_textures_array is empty or when max_voices is reached
+		*/
+		int valid_textures_counter{ 0 };
+		std::vector<Texture> valid_textures{};
+		std::vector<Texture> template_textures_array { Texture{leader} };
+		std::vector<int> starting_h_shift_array{ 0 }; // For each texture in template_textures_array, store the h_shift of the most advanced voice
+		
+		for (int i{ 0 }; i < settings::max_voices - 1; ++i) {
+			const std::pair<std::vector<Texture>, std::vector<int>> valid_textures_for_current_voice{ generate_textures_for_new_voice(template_textures_array, starting_h_shift_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, tonic, dominant, leading_tone, minor_key, time_signature, measure_long_rest) };
+			template_textures_array = valid_textures_for_current_voice.first;
+			starting_h_shift_array = valid_textures_for_current_voice.second; // Data on max shift of each texture generated
 
-		for (int h_shift{ 1 }; h_shift < leader_length_ticks / settings::leader_length_over_max_h_shift; ++h_shift) {
-
-			// Maximum h_shift increment because tick sizes are unpredictable for some reason
-			if (h_shift % (ticks_per_beat / settings::h_shift_increments_per_beat) != 0) {
-				continue;
+			valid_textures.reserve(valid_textures.size() + valid_textures_for_current_voice.first.size());
+			for (const Texture texture : valid_textures_for_current_voice.first) {
+				valid_textures.emplace_back(texture);
 			}
 
-			for (int v_shift{ -1 }; v_shift >= -6 ; --v_shift) {
+			valid_textures_counter += valid_textures.size();
+		}
 
-				// Create follower (LOOP THIS)
-				std::vector<Voice> voices_array(settings::max_parts); // For this one texture
-				voices_array.at(0) = leader;
+		std::vector<mx::api::PartData> valid_textures_parts_sequence(settings::max_voices);
+		for (Texture& texture : valid_textures) {
+			// Create musicxml
+			const mx::api::PartData& leader_part{ score.parts.at(0) };
 
-			// All of this will change when we add more voices
-			// {
-				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
-				voices_array.at(1) = follower;
-
-				// Append empty measures to leader so both voices have the same number of complete measures
-				for (int i{ 0 }; i < (h_shift / ticks_per_measure + 1); ++i) {
-					voices_array.at(0).emplace_back(measure_long_rest);
-				}
-			// }
-
-				// For every voice, generate per-tick note data. MAKES COPIES
-				std::vector<std::vector<mx::api::NoteData>> notes_by_tick(voices_array.size()); // Indexed by tick. Ordering of voices doesn't really matter
-				std::vector<std::vector<int>>leading_tone_locations(voices_array.size());
-				for (int i{ 0 }; i < voices_array.size(); ++i) {
-					std::vector<mx::api::NoteData> notes_by_tick_for_voice{}; // TODO: predetermine vector size
-					for (const mx::api::NoteData& note : voices_array.at(i)) {
-						for (int i{ 0 }; i < note.durationData.durationTimeTicks; ++i) { // Append as many times as the number of ticks the note lasts for
-							notes_by_tick_for_voice.emplace_back(note);
-						}
-					}
-					notes_by_tick.at(i) = (notes_by_tick_for_voice);
-				}
-
-				// FOR EACH PAIR OF VOICES {
-				// (different pairs of voices will have different strippings)
-					// Generate raw unstripped sonority array
-				Voice& voice_1{ notes_by_tick.at(0) }; // temp
-				Voice& voice_2{ notes_by_tick.at(1) }; // temp
-				SonorityArray raw_sonority_array{};
-				for (int i{ 0 }; i < second_highest_notes_by_tick_lengths(notes_by_tick); ++i) {
-					raw_sonority_array.emplace_back(Sonority{ voice_1.at(i), voice_2.at(i), rhythmic_hierarchy_array.at(i % ticks_per_measure), i });
-				}
-				// Generate downbeat sonority arrays
-				SonorityArray stripped_sonority_array{};
-				for (int i{ 0 }; i < raw_sonority_array.size() - 1; ++i) { // Always push the first
-					if (!is_identical(raw_sonority_array.at(i), raw_sonority_array.at(i + 1))) {
-						stripped_sonority_array.emplace_back(raw_sonority_array.at(i + 1));
+			std::vector<mx::api::PartData> parts_array(settings::max_voices);
+			parts_array.at(0) = leader_part;
+			for (int i{ 1 }; i < settings::max_voices; ++i) { // Skip first because first is leader part
+				if (i >= texture.size()) {
+					texture.emplace_back(Voice{});
+					for (int j{ 0 }; j < 2 * leader_length_measures; ++j) {
+						texture.back().emplace_back(measure_long_rest); // Add one empty measure for now. Extend the part later
 					}
 				}
+				parts_array.at(i) = voice_array_to_part(score, texture.at(i), ticks_per_measure, time_signature, measure_long_rest, leader_length_measures); // Need a function to fix barlines
+			}
 
-				for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
-					stripped_sonority_array.at(i).build_motion_data(stripped_sonority_array.at(i + 1));
+			// Extend every part to the same length
+			int longest_part_size{ 0 };
+			for (const mx::api::PartData& part : parts_array) { // Get longest part
+				if (part.measures.size() > longest_part_size) {
+					longest_part_size = part.measures.size();
 				}
+			}
+			for (mx::api::PartData& part : parts_array) {
+				part = extend_part_length(part, longest_part_size - part.measures.size(), time_signature, measure_long_rest);
+			}
 
-				std::vector<std::vector<int>> index_arrays_for_sonority_arrays{};
-				for (int depth{ 0 }; depth <= rhythmic_hierarchy_max_depth; ++depth) {
-					std::vector<int> index_array_at_depth{};
-					for (int i{ 0 }; i < stripped_sonority_array.size(); ++i) {
-						if (depth <= stripped_sonority_array.at(i).get_rhythmic_hierarchy()) {
-							index_array_at_depth.emplace_back(i);
-						}
-					}
+			// FIGURE OUT HOW TO GET WARNINGS COUNT FOR EACH
+			//// Add text labels
+			//parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_texture_label(warnings_count));
 
-					index_arrays_for_sonority_arrays.emplace_back(index_array_at_depth);
+			// Push parts in texture into final valid_textures_parts_sequence
+			for (int part{ 0 }; part < settings::max_voices; ++part) {
+				for (const mx::api::MeasureData& measure : parts_array.at(part).measures) {
+					// For each part, add each note to valid_textures_sequence
+					valid_textures_parts_sequence.at(part).measures.emplace_back(measure);
 				}
-
-				// Check counterpoint
-				const auto result{ check_counterpoint(stripped_sonority_array, index_arrays_for_sonority_arrays, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
-				const std::size_t errors_count{ result.first.size() };
-				const std::size_t warnings_count{ result.second.size() };
-				//const double score{ errors_count + settings::warning_weight * warnings_count }; // Not sure when you would need to use this
-				if (errors_count > settings::error_threshold || warnings_count > settings::warning_threshold) {
-	#ifdef DEBUG
-					std::cout << "Texture rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
-	#endif // DEBUG
-					continue;
+				valid_textures_parts_sequence.at(part).measures.back().barlines.push_back(double_barline);
+				for (int i{ 0 }; i < settings::measures_separation_between_output_textures; ++i) {
+					valid_textures_parts_sequence.at(part).measures.emplace_back(empty_measure);
 				}
-	/*
-				// Add new texture to valid textures sequence
-				for (int voice{ 0 }; voice < settings::max_parts; ++voice) {
-					if (valid_textures_sequence.size() <= voice) {
-						for (int i{ 0 }; i < valid_textures_sequence.at(0).size(); ++i) {
-							// Fill new voice with empty measures until it matches the length of the valid textures sequence so far
-							valid_textures_sequence.at(voice).emplace_back(measure_long_rest);
-						}
-					}
-					for (const mx::api::NoteData& note : voices_array.at(voice)) {
-						// For each voice, add each note to valid_textures_sequence
-						valid_textures_sequence.at(voice).emplace_back(note);
-					}
-					for (int i{ 0 }; i < settings::measures_separation_between_output_textures; ++i) {
-						valid_textures_sequence.at(voice).emplace_back(measure_long_rest);
-					}
-				}
-	*/
-
-	// Create musicxml
-				const mx::api::PartData& original_leader_part{ score.parts.at(0) };
-				//const mx::api::PartData leader_part{ extend_part_length(original_leader_part, original_leader_part.measures.size(), original_leader_part.measures.at(0).timeSignature, ticks_per_measure) };
-				const mx::api::PartData leader_part{ original_leader_part };
-
-				std::vector<mx::api::PartData> parts_array(voices_array.size());
-				parts_array.at(0) = leader_part;
-				for (int i{ 1 }; i < voices_array.size(); ++i) { // Skip first because first is leader part
-					if (voices_array.at(i).size() == 0) {
-						for (int j{ 0 }; j < voices_array.at(0).size(); ++j) { // Add a number of empty measures equal to length of leader
-							voices_array.at(i).emplace_back(measure_long_rest);
-						}
-					}
-					parts_array.at(i) = voice_array_to_part(score, voices_array.at(i), ticks_per_measure, time_signature, measure_long_rest); // Need a function to fix barlines
-				}
-
-				// Extend every part to the same length
-				int longest_part_size{ 0 };
-				for (const mx::api::PartData& part : parts_array) { // Get longest part
-					if (part.measures.size() > longest_part_size) {
-						longest_part_size = part.measures.size();
-					}
-				}
-				for (mx::api::PartData& part : parts_array) {
-					part = extend_part_length(part, longest_part_size - part.measures.size(), time_signature, measure_long_rest);
-				}
-
-				// Add text labels
-				parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_shift_label(h_shift, v_shift, warnings_count));
-
-				// Push parts in texture into final valid_textures_parts_sequence
-				for (int part{ 0 }; part < settings::max_parts; ++part) {
-					for (const mx::api::MeasureData& measure : parts_array.at(part).measures) {
-						// For each part, add each note to valid_textures_sequence
-						valid_textures_parts_sequence.at(part).measures.emplace_back(measure);
-					}
-					valid_textures_parts_sequence.at(part).measures.back().barlines.push_back(double_barline);
-					for (int i{ 0 }; i < settings::measures_separation_between_output_textures; ++i) {
-						valid_textures_parts_sequence.at(part).measures.emplace_back(empty_measure);
-					}
-				}
-
-				++valid_textures_counter;
 			}
 		}
 #endif // n SINGLE_SHIFT_CHECK
@@ -665,7 +708,7 @@ int main() {
 		std::vector<mx::api::PartData> parts_array;
 		parts_array.emplace_back(leader_part);
 		for (int i{ 1 }; i < voices_array.size(); ++i) { // Skip first because first is leader part
-			parts_array.emplace_back(voice_array_to_part(score, voices_array.at(i), ticks_per_measure, time_signature)); // Need a function to fix barlines
+			parts_array.emplace_back(voice_array_to_part(score, voices_array.at(i), ticks_per_measure, time_signature, leader_length_measures)); // Need a function to fix barlines
 		}
 
 		// Extend every part to the same length
