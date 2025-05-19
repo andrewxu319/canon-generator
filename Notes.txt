@@ -6,14 +6,13 @@ RANDOM NOTES
 
 TODO
 - parallel fifths---make it have follower both above and below. maybe check every combination/order
-- FIX 6/8 TIME SIGNATURE
-- use texture objects instead of multiple parallel arrays
-- get key
+- delete empty voices (e.g. if max_voices = 3 but only 2-part canons found)
+- "versatility" score
 - enums for interval names
 - augmented & diminished intervals are dissonant
 - make message a class so it can take an optional number of parameters
 - consecutive octaves w consonant suspensions between them is acceptable https://www.youtube.com/watch?v=g-4dw1T3v30 3:26
-- "versatility" score
+- use texture objects instead of multiple parallel arrays
 
 7-8 in lower voices are an error
 

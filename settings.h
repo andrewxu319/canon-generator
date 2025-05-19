@@ -9,8 +9,8 @@ namespace settings {
 	inline const int max_voices{ 3 };
 	//inline const int octave_shift{ 0 };
 	inline const int h_shift_increments_per_beat{ 1 };
-	inline const int measures_separation_between_output_textures{ 0 };
-	inline const int leader_length_over_max_h_shift{ 1 }; // How tight the canon has to be. Minimum is 1
+	inline const int measures_separation_between_output_canons{ 0 };
+	inline const double min_tightness{ 1.0 }; // Maximum h_shift as a proportion of leader length. (0, 1]
 	//inline const double warning_weight{ 0.5 }; // Not sure when you would need to use this
 	inline const std::size_t error_threshold{ 0 };
 	inline const std::size_t warning_threshold{ 0 };

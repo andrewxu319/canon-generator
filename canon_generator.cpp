@@ -4,7 +4,9 @@
 #include "file_reader.h"
 #include "file_writer.h"
 #include "sonority.h"
+#include "canon.h"
 #include "counterpoint_checker.h"
+
 #include "mx/api/ScoreData.h"
 
 #include <iostream>
@@ -18,7 +20,6 @@
 //#define SINGLE_SHIFT_CHECK
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
-using Texture = std::vector<Voice>;
 
 const std::vector<int> alters_by_key(const int fifths) {
 	std::vector<int> alters_array{ 0, 0, 0, 0, 0, 0, 0 };
@@ -92,7 +93,7 @@ const mx::api::MeasureData create_measure(const mx::api::NoteData& measure_long_
 	return template_measure;
 }
 
-const mx::api::DirectionData create_texture_label(const int warnings_count) {
+const mx::api::DirectionData create_canon_label(const int warnings_count) {
 	mx::api::DirectionData direction{};
 	direction.words.emplace_back(mx::api::WordsData{});
 	direction.words.back().text = "Warnings count: " + std::to_string(warnings_count);
@@ -185,11 +186,6 @@ const Voice split_rests(const int ticks, const int tick_time_position, const int
 	original_rest.tickTimePosition = tick_time_position;
 	Voice splitted_rests{ original_rest };
 	if (splitted_rests.back().durationData.durationTimeTicks > ticks_per_measure) {
-		////
-		if (ticks == 11) {
-			int test{ 0 };
-		}
-		////
 		while (splitted_rests.back().durationData.durationTimeTicks > ticks_per_measure) {
 			Voice splitted_back{ split_note(splitted_rests.back(), ticks_per_measure, ticks_per_measure, time_signature) };
 			splitted_rests.pop_back();
@@ -398,14 +394,12 @@ const ScaleDegree get_tonic(const int fifths, const bool minor_key) {
 	return ScaleDegree{ static_cast<mx::api::Step>(step), alter };
 }
 
-std::pair<std::vector<Texture>, std::vector<int>> generate_textures_for_new_voice(const std::vector<Texture>& template_textures_array, const std::vector<int>& starting_h_shift_array, const Voice& leader, const int leader_length_ticks, const int ticks_per_measure, const int ticks_per_beat, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::vector<int>& key_signature, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const bool minor_key, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest) {
-	std::vector<Texture> valid_textures_for_current_voice{};
-	std::vector<int> h_shift_array_for_current_voice{};
+std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_canons_array, const Voice& leader, const int leader_length_ticks, const int ticks_per_measure, const int ticks_per_beat, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::vector<int>& key_signature, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const bool minor_key, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest) {
+	std::vector<Canon> valid_canons_for_current_voice{};
 	
-	for (int h{ 0 }; h < template_textures_array.size(); ++h) {
-		const Texture& template_texture{ template_textures_array.at(h) };
+	for (Canon& template_canon : template_canons_array) {
 
-		for (int h_shift{ starting_h_shift_array.at(h) + 1 }; h_shift <= leader_length_ticks / settings::leader_length_over_max_h_shift; ++h_shift) {
+		for (int h_shift{ template_canon.get_max_h_shift() + 1}; h_shift < leader_length_ticks * settings::min_tightness; ++h_shift) {
 
 			// Maximum h_shift increment because tick sizes are unpredictable for some reason
 			if (h_shift % (ticks_per_beat / settings::h_shift_increments_per_beat) != 0) {
@@ -414,38 +408,34 @@ std::pair<std::vector<Texture>, std::vector<int>> generate_textures_for_new_voic
 
 			for (int v_shift{ -1 }; v_shift >= -6; --v_shift) {
 				// Create follower (LOOP THIS)
-				std::vector<Voice> texture{ template_texture }; // For this one texture
+				Canon canon{ template_canon.texture(), template_canon.get_max_h_shift()};
 				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
-				texture.emplace_back(follower);
+				canon.texture().emplace_back(follower);
 
 				// Append empty measures to leader so both voices have the same number of complete measures
-				for (int i{ 0 }; i < texture.size() - 1; ++i) { // Skip last one (follower)
+				for (int i{ 0 }; i < canon.texture().size() - 1; ++i) { // Skip last one (follower)
 					for (int j{ 0 }; j < (h_shift / ticks_per_measure + 1); ++j) {
-						texture.at(i).emplace_back(measure_long_rest);
+						canon.texture().at(i).emplace_back(measure_long_rest);
 					}
 				}
 
 				// For every voice, generate per-tick note data. MAKES COPIES
-				std::vector<std::vector<mx::api::NoteData>> notes_by_tick(texture.size()); // Indexed by tick. Ordering of voices doesn't really matter
-				std::vector<std::vector<int>>leading_tone_locations(texture.size());
-				for (int i{ 0 }; i < texture.size(); ++i) {
+				std::vector<std::vector<mx::api::NoteData>> notes_by_tick(canon.texture().size()); // Indexed by tick. Ordering of voices doesn't really matter
+				std::vector<std::vector<int>>leading_tone_locations(canon.texture().size());
+				for (int i{ 0 }; i < canon.texture().size(); ++i) {
 					std::vector<mx::api::NoteData> notes_by_tick_for_voice{}; // TODO: predetermine vector size
-					for (const mx::api::NoteData& note : texture.at(i)) {
-						for (int i{ 0 }; i < note.durationData.durationTimeTicks; ++i) { // Append as many times as the number of ticks the note lasts for
+					for (const mx::api::NoteData& note : canon.texture().at(i)) {
+						for (int j{ 0 }; j < note.durationData.durationTimeTicks; ++j) { // Append as many times as the number of ticks the note lasts for
 							notes_by_tick_for_voice.emplace_back(note);
 						}
 					}
 					notes_by_tick.at(i) = (notes_by_tick_for_voice);
 				}
 
-				if (texture.size() == 4) {
-					std::cout << "hi";
-				}
-
 				// Get every unordered combination of two voices
 				std::vector<std::pair<int, int>> voice_pairs{};
-				for (int i{ 0 }; i < texture.size(); ++i) {
-					for (int j{ i + 1 }; j < texture.size(); ++j) {
+				for (int i{ 0 }; i < canon.texture().size(); ++i) {
+					for (int j{ i + 1 }; j < canon.texture().size(); ++j) {
 						voice_pairs.emplace_back(std::pair<int, int>{i, j});
 					}
 				}
@@ -495,22 +485,21 @@ std::pair<std::vector<Texture>, std::vector<int>> generate_textures_for_new_voic
 				//const double score{ errors_count + settings::warning_weight * warnings_count }; // Not sure when you would need to use this
 				if (error_count > settings::error_threshold || warning_count > settings::warning_threshold) {
 #ifdef DEBUG
-					//std::cout << "Texture rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
+					//std::cout << "Canon rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
 					continue;
 				}
 				else {
-					valid_textures_for_current_voice.emplace_back(texture);
-					h_shift_array_for_current_voice.push_back(h_shift);
+					valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift });
 #ifdef DEBUG
-					std::cout << "Valid texture! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
+					std::cout << "Valid canon! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
 				}
 			}
 		}
 	}
 
-	return std::pair<std::vector<Texture>, std::vector<int>>{ valid_textures_for_current_voice, h_shift_array_for_current_voice };
+	return valid_canons_for_current_voice;
 }
 
 int main() {
@@ -557,42 +546,40 @@ int main() {
 		/*
 		* have an array store a list of partdata
 		* add to the list of partdata every iteration
-		* clear template_textures_array , add to it every iteration
+		* clear template_canons_array , add to it every iteration
 		* the function would take existing voices and create a new follower
-		* loop until template_textures_array is empty or when max_voices is reached
+		* loop until template_canons_array is empty or when max_voices is reached
 		*/
-		int valid_textures_counter{ 0 };
-		std::vector<Texture> valid_textures{};
-		std::vector<Texture> template_textures_array { Texture{leader} };
-		std::vector<int> starting_h_shift_array{ 0 }; // For each texture in template_textures_array, store the h_shift of the most advanced voice
+		int valid_canons_counter{ 0 };
+		std::vector<Canon> valid_canons{};
+		std::vector<Canon> template_canons_array{ Canon{std::vector<Voice>{leader}, 0} };
 		
 		for (int i{ 0 }; i < settings::max_voices - 1; ++i) {
-			const std::pair<std::vector<Texture>, std::vector<int>> valid_textures_for_current_voice{ generate_textures_for_new_voice(template_textures_array, starting_h_shift_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, tonic, dominant, leading_tone, minor_key, time_signature, measure_long_rest) };
-			template_textures_array = valid_textures_for_current_voice.first;
-			starting_h_shift_array = valid_textures_for_current_voice.second; // Data on max shift of each texture generated
+			const std::vector<Canon> valid_canons_for_current_voice{ generate_canons_for_new_voice(template_canons_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, tonic, dominant, leading_tone, minor_key, time_signature, measure_long_rest) };
+			template_canons_array = valid_canons_for_current_voice;
 
-			valid_textures.reserve(valid_textures.size() + valid_textures_for_current_voice.first.size());
-			for (const Texture texture : valid_textures_for_current_voice.first) {
-				valid_textures.emplace_back(texture);
+			valid_canons.reserve(valid_canons.size() + valid_canons_for_current_voice.size());
+			for (const Canon& canon : valid_canons_for_current_voice) {
+				valid_canons.emplace_back(canon);
 			}
 		}
-		valid_textures_counter = valid_textures.size();
+		valid_canons_counter = valid_canons.size();
 
-		std::vector<mx::api::PartData> valid_textures_parts_sequence(settings::max_voices);
-		for (Texture& texture : valid_textures) {
+		std::vector<mx::api::PartData> valid_canons_parts_sequence(settings::max_voices);
+		for (Canon& canon : valid_canons) {
 			// Create musicxml
 			const mx::api::PartData& leader_part{ score.parts.at(0) };
 
 			std::vector<mx::api::PartData> parts_array(settings::max_voices);
 			parts_array.at(0) = leader_part;
 			for (int i{ 1 }; i < settings::max_voices; ++i) { // Skip first because first is leader part
-				if (i >= texture.size()) {
-					texture.emplace_back(Voice{});
+				if (i >= canon.texture().size()) {
+					canon.texture().emplace_back(Voice{});
 					for (int j{ 0 }; j < 2 * leader_length_measures; ++j) {
-						texture.back().emplace_back(measure_long_rest); // Add one empty measure for now. Extend the part later
+						canon.texture().back().emplace_back(measure_long_rest); // Add one empty measure for now. Extend the part later
 					}
 				}
-				parts_array.at(i) = voice_array_to_part(score, texture.at(i), ticks_per_measure, time_signature, measure_long_rest, leader_length_measures); // Need a function to fix barlines
+				parts_array.at(i) = voice_array_to_part(score, canon.texture().at(i), ticks_per_measure, time_signature, measure_long_rest, leader_length_measures); // Need a function to fix barlines
 			}
 
 			// Extend every part to the same length
@@ -608,17 +595,17 @@ int main() {
 
 			// FIGURE OUT HOW TO GET WARNINGS COUNT FOR EACH
 			//// Add text labels
-			//parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_texture_label(warnings_count));
+			//parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(warnings_count));
 
-			// Push parts in texture into final valid_textures_parts_sequence
+			// Push parts in canon into final valid_canons_parts_sequence
 			for (int part{ 0 }; part < settings::max_voices; ++part) {
 				for (const mx::api::MeasureData& measure : parts_array.at(part).measures) {
-					// For each part, add each note to valid_textures_sequence
-					valid_textures_parts_sequence.at(part).measures.emplace_back(measure);
+					// For each part, add each note to valid_canons_sequence
+					valid_canons_parts_sequence.at(part).measures.emplace_back(measure);
 				}
-				valid_textures_parts_sequence.at(part).measures.back().barlines.push_back(double_barline);
-				for (int i{ 0 }; i < settings::measures_separation_between_output_textures; ++i) {
-					valid_textures_parts_sequence.at(part).measures.emplace_back(empty_measure);
+				valid_canons_parts_sequence.at(part).measures.back().barlines.push_back(double_barline);
+				for (int i{ 0 }; i < settings::measures_separation_between_output_canons; ++i) {
+					valid_canons_parts_sequence.at(part).measures.emplace_back(empty_measure);
 				}
 			}
 		}
@@ -733,7 +720,7 @@ int main() {
 #endif // SINGLE_SHIFT_CHECK
 
 		// Remove extra time signatures and clefs
-		for (mx::api::PartData& part : valid_textures_parts_sequence) {
+		for (mx::api::PartData& part : valid_canons_parts_sequence) {
 			for (int i{ 1 }; i < part.measures.size(); ++i) {
 				// Start at second measure
 				mx::api::MeasureData& measure{ part.measures.at(i) };
@@ -745,12 +732,12 @@ int main() {
 			}
 		}
 
-		std::vector<mx::api::DirectionData>& directions{ valid_textures_parts_sequence.at(0).measures.at(0).staves.at(0).directions };
+		std::vector<mx::api::DirectionData>& directions{ valid_canons_parts_sequence.at(0).measures.at(0).staves.at(0).directions };
 		directions.emplace_back(mx::api::DirectionData{});
 		directions.back().words.emplace_back(mx::api::WordsData{});
-		directions.back().words.back().text = std::to_string(valid_textures_counter) + " valid canons\n";
+		directions.back().words.back().text = std::to_string(valid_canons_counter) + " valid canons\n";
 
-		const mx::api::ScoreData output_score{ create_output_score(score, valid_textures_parts_sequence) }; // add follower(s) to original score
+		const mx::api::ScoreData output_score{ create_output_score(score, valid_canons_parts_sequence) }; // add follower(s) to original score
 
 		//// Write file
 		write_file(output_score, settings::write_file_path); // output_score

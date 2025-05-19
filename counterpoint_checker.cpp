@@ -6,7 +6,7 @@
 #include <iostream>
 #include <cmath>
 
-//#define SHOW_COUNTERPOINT_CHECKS
+#define SHOW_COUNTERPOINT_CHECKS
 
 void print_messages(std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box) {
 	if (error_message_box.size() == 0 && warning_message_box.size() == 0) {
@@ -138,6 +138,12 @@ const bool are_upbeat_parallels_legal(const SonorityArray& sonority_array, const
 }
 
 void check_voice_independence(const SonorityArray& sonority_array, std::vector<int> index_array, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const int ticks_per_measure, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat) {
+	// Check if inverting fixes the parallels
+	bool parallel_fifths { false };
+	bool parallel_fourths{ false };
+	int parallel_fifths_start{};
+	int parallel_fifths_end{};
+	
 	for (int i{ 0 }; i < index_array.size() - 1; ++i) { // Subtract 1 because we don't want to check the last sonority
 		const Sonority& current_sonority{ sonority_array.at(index_array.at(i)) };
 		const Sonority& next_sonority{ (sonority_array).at(index_array.at(i + 1)) };
@@ -152,7 +158,19 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		
 	// Avoid parallel fifths and octaves between adjacent notes.
 		if (current_sonority.get_simple_interval().second == 7 && next_sonority.get_simple_interval().second == 7) {
-			send_error_message(Message{ "Parallel fifths between adjacent notes or downbeats", current_sonority.get_index(), next_sonority.get_index() } , error_message_box);
+			parallel_fifths = true;
+			parallel_fifths_start = current_sonority.get_index();
+			parallel_fifths_end = next_sonority.get_index();
+#ifdef SHOW_COUNTERPOINT_CHECKS
+			std::cout << "Parallel fifths between adjacent notes or downbeats, checking inverted version\n";
+#endif // SHOW_COUNTERPOINT_CHECKS
+			//send_error_message(Message{ "Parallel fifths between adjacent notes or downbeats", current_sonority.get_index(), next_sonority.get_index() } , error_message_box);
+		} else
+		if (current_sonority.get_simple_interval().second == 5 && next_sonority.get_simple_interval().second == 5) {
+			parallel_fourths = true;
+#ifdef SHOW_COUNTERPOINT_CHECKS
+			std::cout << "Parallel fourths between adjacent notes or downbeats, checking inverted version\n";
+#endif // SHOW_COUNTERPOINT_CHECKS
 		} else
 		if (current_sonority.get_simple_interval().first == 0 && next_sonority.get_simple_interval().first == 0) {
 			send_error_message(Message{ "Parallel octaves between adjacent notes or downbeats", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
@@ -179,9 +197,23 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 				{
 
 					if (current_sonority.get_simple_interval().second == 7 && downbeat.get_simple_interval().second == 7) {
-						send_error_message(Message{ "Parallel fifths between weak beat and downbeat", current_sonority.get_index(), downbeat.get_index() }, error_message_box);
+						parallel_fifths = true;
+						parallel_fifths_start = current_sonority.get_index();
+						parallel_fifths_end = downbeat.get_index();
+#ifdef SHOW_COUNTERPOINT_CHECKS
+						std::cout << "Parallel fifths between weak beat and downbeat, checking inverted version\n";
+#endif // SHOW_COUNTERPOINT_CHECKS
+						//send_error_message(Message{ "Parallel fifths between weak beat and downbeat", current_sonority.get_index(), downbeat.get_index() }, error_message_box);
 						checked_rhythmic_levels.push_back(downbeat.get_rhythmic_hierarchy());
 					} else
+					if (current_sonority.get_simple_interval().second == 7 && downbeat.get_simple_interval().second == 7) {
+						parallel_fourths = true;
+#ifdef SHOW_COUNTERPOINT_CHECKS
+						std::cout << "Parallel fourths between weak beat and downbeat, checking inverted version\n";
+#endif // SHOW_COUNTERPOINT_CHECKS
+						checked_rhythmic_levels.push_back(downbeat.get_rhythmic_hierarchy());
+					}
+					else
 					if (current_sonority.get_simple_interval().first == 0 && downbeat.get_simple_interval().first == 0) {
 						send_error_message(Message{ "Parallel octaves between weak beat and downbeat", current_sonority.get_index(), downbeat.get_index() }, error_message_box);
 						checked_rhythmic_levels.push_back(downbeat.get_rhythmic_hierarchy());
@@ -201,7 +233,22 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 			if (next_upbeat.get_rhythmic_hierarchy() == current_sonority.get_rhythmic_hierarchy()) {
 				if (current_sonority.get_simple_interval().second == 7 && next_upbeat.get_simple_interval().second == 7) {
 					if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j)) {
-						send_error_message(Message{ "Parallel fifths between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
+						parallel_fifths = true;
+						parallel_fifths_start = current_sonority.get_index();
+						parallel_fifths_end = next_upbeat.get_index();
+#ifdef SHOW_COUNTERPOINT_CHECKS
+						std::cout << "Parallel fifths between consecutive upbeats, checking inverted version";
+#endif // SHOW_COUNTERPOINT_CHECKS
+						//send_error_message(Message{ "Parallel fifths between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
+					}
+				} else
+				if (current_sonority.get_simple_interval().second == 7 && next_upbeat.get_simple_interval().second == 7) {
+					if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j)) {
+						parallel_fourths = true;
+#ifdef SHOW_COUNTERPOINT_CHECKS
+						std::cout << "Parallel fourths between consecutive upbeats, checking inverted version";
+#endif // SHOW_COUNTERPOINT_CHECKS
+						//send_error_message(Message{ "Parallel fifths between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
 					}
 				} else
 				if (current_sonority.get_simple_interval().first == 0 && next_upbeat.get_simple_interval().first == 0) {
@@ -211,6 +258,10 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 				}
 				break;
 			}
+		}
+
+		if (parallel_fifths || parallel_fourths) {
+			send_error_message(Message{ "Parallel fifths!", parallel_fifths_start, parallel_fifths_end }, error_message_box);
 		}
 
 /*
@@ -230,8 +281,13 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 	// Avoid similar motion from a 2nd to a 3rd
 	// Remove? Warning?
 		if (current_sonority.get_motion_type() == similar
-			&& current_sonority.get_simple_interval().first == 1
-			&& next_sonority.get_simple_interval().first == 2) {
+			&& (current_sonority.get_simple_interval().first == 1
+				&& next_sonority.get_simple_interval().first == 2)
+			// 2nd to 3rd
+			|| (current_sonority.get_simple_interval().first == 6
+				&& next_sonority.get_simple_interval().first == 5))
+			// Inverted---7th to 6th
+		{
 			send_warning_message(Message{ "Similar motion from a 2nd to a 3rd", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
 		}
 
@@ -647,8 +703,10 @@ const std::pair<std::vector<Message>, std::vector<Message>>
 	std::vector<Message> error_messages{};
 	std::vector<Message> warning_messages{};
 
-	for (std::vector<int> index_array_for_sonority_array : index_arrays_for_sonority_arrays) {
-		check_voice_independence(sonority_array, index_array_for_sonority_array, error_messages, warning_messages, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat);
+	for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
+		if (index_array.size() > 0) {
+			check_voice_independence(sonority_array, index_array, error_messages, warning_messages, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat);
+		}
 	}
 	check_dissonance_handling(sonority_array, error_messages, warning_messages, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array); // Only check lowest level
 
