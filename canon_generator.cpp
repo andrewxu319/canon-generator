@@ -142,7 +142,7 @@ Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, co
 	// First part
 	output_voice.emplace_back(original_note);
 	try {
-		output_voice.at(0).durationData = ticks_to_duration_data(first_half_ticks, ticks_per_measure, time_signature);
+		output_voice.back().durationData = ticks_to_duration_data(first_half_ticks, ticks_per_measure, time_signature);
 		output_voice.back().isTieStart = true;
 
 	}
@@ -169,6 +169,7 @@ Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, co
 	}
 	catch (...) { // TODO: specify exception
 		const Voice reattempt_splitted_notes{ split_note(output_voice.back(), get_last_key_before(original_note.durationData.durationTimeTicks - first_half_ticks), ticks_per_measure, time_signature) };
+		output_voice.pop_back();
 		for (mx::api::NoteData reattempt_splitted_note : reattempt_splitted_notes) {
 			output_voice.emplace_back(reattempt_splitted_note);
 		}
@@ -184,9 +185,11 @@ const Voice split_rests(const int ticks, const int tick_time_position, const int
 	original_rest.tickTimePosition = tick_time_position;
 	Voice splitted_rests{ original_rest };
 	if (splitted_rests.back().durationData.durationTimeTicks > ticks_per_measure) {
-		if (ticks == 13) {
+		////
+		if (ticks == 11) {
 			int test{ 0 };
 		}
+		////
 		while (splitted_rests.back().durationData.durationTimeTicks > ticks_per_measure) {
 			Voice splitted_back{ split_note(splitted_rests.back(), ticks_per_measure, ticks_per_measure, time_signature) };
 			splitted_rests.pop_back();
@@ -207,7 +210,7 @@ const Voice split_rests(const int ticks, const int tick_time_position, const int
 	return splitted_rests;
 }
 
-const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::vector<int>& key_signature, const ScaleDegree leading_tone, const bool minor_key, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy
+const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::vector<int>& key_signature, const ScaleDegree leading_tone, const bool minor_key, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy	
 	// Vertical shift
 	if (v_shift != 0) {
 		for (mx::api::NoteData& note : voice) {
@@ -215,6 +218,9 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::
 			if (v_shift < -6 || v_shift > 6) {
 				throw Exception{ "Vertical shift must be between -6 and 6! " + std::to_string(v_shift) + " is illegal.\n" };
 			}
+
+			note.pitchData.alter = note.pitchData.alter - key_signature.at(static_cast<int>(note.pitchData.step)); // Apply extra accidentals (in addition to key signature)
+
 			const int destination_int_pre_mod{ static_cast<int>(note.pitchData.step) + v_shift };
 			if (v_shift > 0) {
 				note.pitchData.step = static_cast<mx::api::Step>(destination_int_pre_mod % 7);
@@ -230,10 +236,12 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::
 			}
 
 			// Key signature
-			note.pitchData.alter = key_signature.at(static_cast<int>(note.pitchData.step));
 			if (minor_key && (note.pitchData.step == leading_tone.step)) {
-				// If minor key & note is the 7th
-				++note.pitchData.alter;
+				// If minor key note is the 7th
+				note.pitchData.alter += key_signature.at(static_cast<int>(note.pitchData.step)) + 1; // Override normal accidental preservation
+			}
+			else {
+				note.pitchData.alter += key_signature.at(static_cast<int>(note.pitchData.step));
 			}
 		}
 	}
@@ -405,7 +413,6 @@ std::pair<std::vector<Texture>, std::vector<int>> generate_textures_for_new_voic
 			}
 
 			for (int v_shift{ -1 }; v_shift >= -6; --v_shift) {
-
 				// Create follower (LOOP THIS)
 				std::vector<Voice> texture{ template_texture }; // For this one texture
 				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
@@ -488,13 +495,16 @@ std::pair<std::vector<Texture>, std::vector<int>> generate_textures_for_new_voic
 				//const double score{ errors_count + settings::warning_weight * warnings_count }; // Not sure when you would need to use this
 				if (error_count > settings::error_threshold || warning_count > settings::warning_threshold) {
 #ifdef DEBUG
-					std::cout << "Texture rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
+					//std::cout << "Texture rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
 					continue;
 				}
 				else {
 					valid_textures_for_current_voice.emplace_back(texture);
 					h_shift_array_for_current_voice.push_back(h_shift);
+#ifdef DEBUG
+					std::cout << "Valid texture! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
+#endif // DEBUG
 				}
 			}
 		}
@@ -565,9 +575,8 @@ int main() {
 			for (const Texture texture : valid_textures_for_current_voice.first) {
 				valid_textures.emplace_back(texture);
 			}
-
-			valid_textures_counter += valid_textures.size();
 		}
+		valid_textures_counter = valid_textures.size();
 
 		std::vector<mx::api::PartData> valid_textures_parts_sequence(settings::max_voices);
 		for (Texture& texture : valid_textures) {

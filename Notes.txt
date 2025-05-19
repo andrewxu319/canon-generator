@@ -5,6 +5,7 @@ RANDOM NOTES
 - slowest part seems to be generating the xml/part data
 
 TODO
+- parallel fifths---make it have follower both above and below. maybe check every combination/order
 - FIX 6/8 TIME SIGNATURE
 - use texture objects instead of multiple parallel arrays
 - get key
