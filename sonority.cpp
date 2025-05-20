@@ -8,15 +8,9 @@ Sonority::Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& not
 	//m_simple_interval = m_compound_interval;
 }
 
-const bool Sonority::is_dissonant() const {
-	Interval interval{ get_simple_interval() };
-
-	if ((interval.first == 1) || (interval.first == 6)) {
-		// Treat the Aug 4 and Dim 5 as consonant if not involving bass.
-		return true;
-	}
-
-	return false;
+const bool Sonority::is_sonority_dissonant(const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals) const {
+	// <scale degrees, semitones>
+	return is_dissonant(m_note_1, m_note_2, dissonant_intervals);
 }
 
 void Sonority::build_motion_data(Sonority& next_sonority) {
@@ -80,17 +74,26 @@ const Interval get_interval(const mx::api::NoteData& note_1, const mx::api::Note
 	}
 }
 
-const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2) {
+const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2,
+	const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals
+	= std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 6}, std::vector<int>{} }) {
+	// <scale degrees, semitones>
+
+	// Exempt augmented unisons since raised/lowered leading tones are weird and glitchy
+	// || (simple_interval.second % 12 == 6)
+	// Treat the Aug 4 and Dim 5 as consonant if not involving bass.
+
 	if (note_1.isRest || note_2.isRest) {
-		return true;
+		return false;
 	}
 
 	Interval simple_interval{ get_interval(note_1, note_2, false) };
+	simple_interval.first %= 7;
+	simple_interval.second %= 12;
 
-	if ((simple_interval.first % 7 == 1) || (simple_interval.first % 7 == 6)){
-		// Exempt augmented unisons since raised/lowered leading tones are weird and glitchy
-		// || (simple_interval.second % 12 == 6)
-		// Treat the Aug 4 and Dim 5 as consonant if not involving bass.
+	if (std::find(dissonant_intervals.first.begin(), dissonant_intervals.first.end(), simple_interval.first) != dissonant_intervals.first.end()
+		|| std::find(dissonant_intervals.second.begin(), dissonant_intervals.second.end(), simple_interval.second) != dissonant_intervals.second.end()) {
+		// Find in parameter list
 		return true;
 	}
 

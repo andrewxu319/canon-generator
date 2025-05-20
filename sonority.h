@@ -19,7 +19,8 @@ class Sonority {
 public:
 	Sonority::Sonority(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const int rhythmic_hierarchy, const int id);
 
-	const bool is_dissonant()const;
+	const bool Sonority::is_sonority_dissonant(const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals
+		= std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 6}, std::vector<int>{} }) const;
 	void build_motion_data(Sonority& next_sonority);
 	const MotionType get_motion_type() const;
 
@@ -92,5 +93,5 @@ private:
 
 using SonorityArray = std::vector<Sonority>;
 
-const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2);
+const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals);
 const bool is_identical(const Sonority& sonority_1, const Sonority& sonority_2);

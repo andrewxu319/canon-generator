@@ -6,11 +6,10 @@
 
 using Voice = std::vector<mx::api::NoteData>;
 
-class Message {
-public:
-	const std::string_view description{};
-	const int sonority_1_index{};
-	const int sonority_2_index{};
+struct Message {
+	std::string_view description{};
+	int sonority_1_index{};
+	int sonority_2_index{};
 };
 
 class Canon {
@@ -27,25 +26,31 @@ public:
 		return m_max_h_shift;
 	}
 
-	/*std::vector<Message> error_message_box() const {
+	std::vector<Message>& error_message_box() {
 		return m_error_message_box;
 	}
 
-	std::vector<Message> warning_message_box() const {
+	std::vector<Message>& warning_message_box() {
 		return m_warning_message_box;
+	}
+
+	const int get_error_count() const {
+		return m_error_message_box.size();
 	}
 
 	const int get_warning_count() const {
 		return m_warning_message_box.size();
-	}*/
+	}
 
 private:
 	std::vector<Voice> m_texture{};
-	int m_max_h_shift{};
-	/*std::vector<Message> m_error_message_box{};
-	std::vector<Message> m_warning_message_box{};*/
-	int m_invertibility{};
-	int m_top_voice{}; // smth smth fix
-	int m_bottom_voice{}; // fix
-	int m_versatility{};
+	int m_max_h_shift{}; // Also tightness
+	std::vector<Message> m_error_message_box{};
+	std::vector<Message> m_warning_message_box{};
+	int m_invertibility{}; // Number of voice pairs that are not invertible (weighted equally regardless of how many there are)
+	int m_outer_voice_errors{}; // Number of voice pairs that have outer voice-specific errors 
+	int m_bass_voice_errors{}; // Number of voice pairs that have bass voice-specific errors
+	int m_canon_quality{}; // Combined weighted score of warning_count, max_h_shift, invertibility, outer_voice_errors, and bass_voice_errors
 };
+
+void print_messages(Canon& canon);

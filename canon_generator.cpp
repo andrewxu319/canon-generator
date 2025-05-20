@@ -419,71 +419,12 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 					}
 				}
 
-				// For every voice, generate per-tick note data. MAKES COPIES
-				std::vector<std::vector<mx::api::NoteData>> notes_by_tick(canon.texture().size()); // Indexed by tick. Ordering of voices doesn't really matter
-				std::vector<std::vector<int>>leading_tone_locations(canon.texture().size());
-				for (int i{ 0 }; i < canon.texture().size(); ++i) {
-					std::vector<mx::api::NoteData> notes_by_tick_for_voice{}; // TODO: predetermine vector size
-					for (const mx::api::NoteData& note : canon.texture().at(i)) {
-						for (int j{ 0 }; j < note.durationData.durationTimeTicks; ++j) { // Append as many times as the number of ticks the note lasts for
-							notes_by_tick_for_voice.emplace_back(note);
-						}
-					}
-					notes_by_tick.at(i) = (notes_by_tick_for_voice);
-				}
-
-				// Get every unordered combination of two voices
-				std::vector<std::pair<int, int>> voice_pairs{};
-				for (int i{ 0 }; i < canon.texture().size(); ++i) {
-					for (int j{ i + 1 }; j < canon.texture().size(); ++j) {
-						voice_pairs.emplace_back(std::pair<int, int>{i, j});
-					}
-				}
-
-				// FOR EACH PAIR OF VOICES {
-				int error_count{ 0 };
-				int warning_count{ 0 };
-				for (const std::pair<int, int>& voice_pair : voice_pairs) {
-					// (different pairs of voices will have different strippings)
-						// Generate raw unstripped sonority array
-					const Voice& voice_1{ notes_by_tick.at(voice_pair.first) };
-					const Voice& voice_2{ notes_by_tick.at(voice_pair.second) };
-					SonorityArray raw_sonority_array{};
-					for (int i{ 0 }; i < voice_1.size() && i < voice_2.size(); ++i) {
-						raw_sonority_array.emplace_back(Sonority{ voice_1.at(i), voice_2.at(i), rhythmic_hierarchy_array.at(i % ticks_per_measure), i });
-					}
-					// Generate downbeat sonority arrays
-					SonorityArray stripped_sonority_array{};
-					for (int i{ 0 }; i < raw_sonority_array.size() - 1; ++i) { // Always push the first
-						if (!is_identical(raw_sonority_array.at(i), raw_sonority_array.at(i + 1))) {
-							stripped_sonority_array.emplace_back(raw_sonority_array.at(i + 1));
-						}
-					}
-
-					for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
-						stripped_sonority_array.at(i).build_motion_data(stripped_sonority_array.at(i + 1));
-					}
-
-					std::vector<std::vector<int>> index_arrays_for_sonority_arrays{};
-					for (int depth{ 0 }; depth <= rhythmic_hierarchy_max_depth; ++depth) {
-						std::vector<int> index_array_at_depth{};
-						for (int i{ 0 }; i < stripped_sonority_array.size(); ++i) {
-							if (depth <= stripped_sonority_array.at(i).get_rhythmic_hierarchy()) {
-								index_array_at_depth.emplace_back(i);
-							}
-						}
-
-						index_arrays_for_sonority_arrays.emplace_back(index_array_at_depth);
-					}
-
-					// Check counterpoint
-					const auto result{ check_counterpoint(stripped_sonority_array, index_arrays_for_sonority_arrays, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
-					error_count += result.first.size();
-					warning_count += result.second.size();
-				}
+				// Check counterpoint
+				check_counterpoint(canon, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat);
+				// This will change member variables in canon
 
 				//const double score{ errors_count + settings::warning_weight * warnings_count }; // Not sure when you would need to use this
-				if (error_count > settings::error_threshold || warning_count > settings::warning_threshold) {
+				if (canon.get_error_count() > settings::error_threshold || canon.get_warning_count() > settings::warning_threshold) {
 #ifdef DEBUG
 					//std::cout << "Canon rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
@@ -565,6 +506,11 @@ int main() {
 		}
 		valid_canons_counter = valid_canons.size();
 
+		if (valid_canons_counter == 0) {
+			std::cout << "No valid canons found!\n";
+			return 0;
+		}
+
 		std::vector<mx::api::PartData> valid_canons_parts_sequence(settings::max_voices);
 		for (Canon& canon : valid_canons) {
 			// Create musicxml
@@ -595,7 +541,7 @@ int main() {
 
 			// FIGURE OUT HOW TO GET WARNINGS COUNT FOR EACH
 			//// Add text labels
-			//parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(warnings_count));
+			parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(canon.get_warning_count()));
 
 			// Push parts in canon into final valid_canons_parts_sequence
 			for (int part{ 0 }; part < settings::max_voices; ++part) {
