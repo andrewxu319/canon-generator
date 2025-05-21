@@ -17,7 +17,7 @@
 #include <algorithm>
 
 #define DEBUG
-//#define SINGLE_SHIFT_CHECK
+#define SINGLE_SHIFT_CHECK
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
 
@@ -399,6 +399,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 	
 	for (Canon& template_canon : template_canons_array) {
 
+#ifndef SINGLE_SHIFT_CHECK
 		for (int h_shift{ template_canon.get_max_h_shift() + 1}; h_shift < leader_length_ticks * settings::min_tightness; ++h_shift) {
 
 			// Maximum h_shift increment because tick sizes are unpredictable for some reason
@@ -407,6 +408,13 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 			}
 
 			for (int v_shift{ -1 }; v_shift >= -6; --v_shift) {
+#endif // SINGLE_SHIFT_CHECK
+
+#ifdef SINGLE_SHIFT_CHECK
+				const int v_shift{ 0 };
+				const int h_shift{ 4 };
+#endif // SINGLE_SHIFT_CHECK
+
 				// Create follower (LOOP THIS)
 				Canon canon{ template_canon.texture(), template_canon.get_max_h_shift()};
 				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
@@ -423,8 +431,13 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 				check_counterpoint(canon, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat);
 				// This will change member variables in canon
 
+#ifdef SINGLE_SHIFT_CHECK
+				valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift });
+#endif // SINGLE_SHIFT_CHECK
+
+#ifndef SINGLE_SHIFT_CHECK
 				//const double score{ errors_count + settings::warning_weight * warnings_count }; // Not sure when you would need to use this
-				if (canon.get_error_count() > settings::error_threshold || canon.get_warning_count() > settings::warning_threshold) {
+				if (canon.get_error_count() > 0 || canon.get_warning_count() > settings::warning_threshold) {
 #ifdef DEBUG
 					//std::cout << "Canon rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
@@ -438,6 +451,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 				}
 			}
 		}
+#endif // SINGLE_SHIFT_CHECK
 	}
 
 	return valid_canons_for_current_voice;
@@ -481,7 +495,6 @@ int main() {
 		const int ticks_per_beat{ ticks_per_measure / time_signature.beats };
 		const int rhythmic_hierarchy_of_beat{ rhythmic_hierarchy_array.at(ticks_per_beat) }; // Second beat is always on the weakest beat hierarchies
 
-#ifndef SINGLE_SHIFT_CHECK
 		// TODO: FORBID VOICE CROSSINGS
 
 		/*
@@ -494,7 +507,7 @@ int main() {
 		int valid_canons_counter{ 0 };
 		std::vector<Canon> valid_canons{};
 		std::vector<Canon> template_canons_array{ Canon{std::vector<Voice>{leader}, 0} };
-		
+
 		for (int i{ 0 }; i < settings::max_voices - 1; ++i) {
 			const std::vector<Canon> valid_canons_for_current_voice{ generate_canons_for_new_voice(template_canons_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, tonic, dominant, leading_tone, minor_key, time_signature, measure_long_rest) };
 			template_canons_array = valid_canons_for_current_voice;
@@ -555,115 +568,6 @@ int main() {
 				}
 			}
 		}
-#endif // n SINGLE_SHIFT_CHECK
-
-#ifdef SINGLE_SHIFT_CHECK
-		// Create follower (LOOP THIS)
-		std::vector<Voice> voices_array{};
-		voices_array.emplace_back(leader);
-		// TODO: FORBID VOICE CROSSINGS
-
-		// LOOP HERE (and multiple followers)
-		int v_shift{ 0 };
-		int h_shift{ 4 };
-		const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
-		voices_array.emplace_back(follower);
-
-		// For every voice, generate per-tick note data. MAKES COPIES
-		std::vector<std::vector<mx::api::NoteData>> notes_by_tick(voices_array.size()); // Indexed by tick. Ordering of voices doesn't really matter
-		std::vector<std::vector<int>>leading_tone_locations(voices_array.size());
-		for (int i{ 0 }; i < voices_array.size(); ++i) {
-			std::vector<mx::api::NoteData> notes_by_tick_for_voice{}; // TODO: predetermine vector size
-			for (const mx::api::NoteData& note : voices_array.at(i)) {
-				for (int i{ 0 }; i < note.durationData.durationTimeTicks; ++i) { // Append as many times as the number of ticks the note lasts for
-					notes_by_tick_for_voice.emplace_back(note);
-				}
-			}
-			notes_by_tick.at(i) = (notes_by_tick_for_voice);
-		}
-
-/*
-		// Get leading tone locations
-		if (minor_key) {
-			leading_tone_locations.at(0) = std::vector<int>{}; // Leader voice gets an empty array
-			for (int i{ 1 }; i < voices_array.size(); ++i) {
-				std::vector<int>leading_tone_locations_in_voice{};
-				for (int j{ 0 }; j < notes_by_tick.at(i).size(); ++j) {
-					if (static_cast<int>(notes_by_tick.at(i).at(j).pitchData.step) == leading_tone.step && notes_by_tick.at(i).at(j).pitchData.alter == leading_tone.alter) {
-						leading_tone_locations_in_voice.push_back(j);
-					}
-				}
-				leading_tone_locations.at(i) = leading_tone_locations_in_voice;
-			}
-		}
-*/
-
-		// Generate rhythmic hierarchy
-		const std::vector<int> rhythmic_hierarchy_array{create_rhythmic_hierarchy_array(ticks_per_measure, time_signature)};
-		const int rhythmic_hierarchy_max_depth{ *std::max_element(rhythmic_hierarchy_array.begin(), rhythmic_hierarchy_array.end()) };
-		const int ticks_per_beat{ ticks_per_measure / time_signature.beats };
-		const int rhythmic_hierarchy_of_beat{ rhythmic_hierarchy_array.at(ticks_per_beat) }; // Second beat is always on the weakest beat hierarchies
-
-	// FOR EACH PAIR OF VOICES {
-	// (different pairs of voices will have different strippings)
-		// Generate raw unstripped sonority array
-		Voice& voice_1{ notes_by_tick.at(0) }; // temp
-		Voice& voice_2{ notes_by_tick.at(1) }; // temp
-		SonorityArray raw_sonority_array{};
-		for (int i{ 0 }; i < second_highest_notes_by_tick_lengths(notes_by_tick); ++i) {
-			raw_sonority_array.emplace_back(Sonority{ voice_1.at(i), voice_2.at(i), rhythmic_hierarchy_array.at(i % ticks_per_measure), i });
-		}
-
-		// Generate downbeat sonority arrays
-		SonorityArray stripped_sonority_array{};
-		for (int i{ 0 }; i < raw_sonority_array.size() - 1; ++i) { // Always push the first
-			if (!is_identical(raw_sonority_array.at(i), raw_sonority_array.at(i + 1))) {
-				stripped_sonority_array.emplace_back(raw_sonority_array.at(i + 1));
-			}
-		}
-
-		for (int i{ 0 }; i < stripped_sonority_array.size() - 1; ++i) {
-			stripped_sonority_array.at(i).build_motion_data(stripped_sonority_array.at(i + 1));
-		}
-
-		std::vector<std::vector<int>> index_arrays_for_sonority_arrays{};
-		for (int depth{ 0 }; depth <= rhythmic_hierarchy_max_depth; ++depth) {
-			std::vector<int> index_array_at_depth{};
-			for (int i{ 0 }; i < stripped_sonority_array.size(); ++i) {
-				if (depth <= stripped_sonority_array.at(i).get_rhythmic_hierarchy()) {
-					index_array_at_depth.emplace_back(i);
-				}
-			}
-
-			index_arrays_for_sonority_arrays.emplace_back(index_array_at_depth);
-		}
-
-		// Check counterpoint
-		const auto grade{ check_counterpoint(stripped_sonority_array, index_arrays_for_sonority_arrays, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat) }; // Return type is a pair of lists of error and warning messages
-	// }
-
-		// Create musicxml
-		const mx::api::PartData& original_leader_part{ score.parts.at(0) };
-		//const mx::api::PartData leader_part{ extend_part_length(original_leader_part, original_leader_part.measures.size(), original_leader_part.measures.at(0).timeSignature, ticks_per_measure) };
-		const mx::api::PartData leader_part{ original_leader_part };
-
-		std::vector<mx::api::PartData> parts_array;
-		parts_array.emplace_back(leader_part);
-		for (int i{ 1 }; i < voices_array.size(); ++i) { // Skip first because first is leader part
-			parts_array.emplace_back(voice_array_to_part(score, voices_array.at(i), ticks_per_measure, time_signature, leader_length_measures)); // Need a function to fix barlines
-		}
-
-		// Extend every part to the same length
-		int longest_part_size{ 0 };
-		for (const mx::api::PartData& part : parts_array) { // Get longest part
-			if (part.measures.size() > longest_part_size) {
-				longest_part_size = part.measures.size();
-			}
-		}
-		for (mx::api::PartData& part : parts_array) {
-			part = extend_part_length(part, longest_part_size - part.measures.size(), time_signature, measure_long_rest);
-		}
-#endif // SINGLE_SHIFT_CHECK
 
 		// Remove extra time signatures and clefs
 		for (mx::api::PartData& part : valid_canons_parts_sequence) {
