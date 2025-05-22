@@ -1,3 +1,4 @@
+#include "settings.h"
 #include "counterpoint_checker.h"
 
 #include "mx/api/ScoreData.h"
@@ -243,6 +244,13 @@ return;
 			}
 		}
 */
+
+	// Avoid following a perfect consonance with another one.
+		if ((current_sonority.get_simple_interval().second == 7 || current_sonority.get_simple_interval().second == 0)
+			&& (next_sonority.get_simple_interval().second == 7 || next_sonority.get_simple_interval().second == 0))
+		{
+			send_warning_message(Message{ "Consecutive perfect consonances", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+		}
 
 	// Avoid similar motion from a 2nd to a 3rd
 	// Remove? Warning?
@@ -564,7 +572,7 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 						allowed_dissonances.at(i) = true;
 						return;
 					}
-					else if (std::abs(sonority_array.at(i - 1).get_note_motion(voice).second > 1)) {
+					else if (std::abs(sonority_array.at(i - 1).get_note_motion(voice).second) > 1) {
 						// "APPOGIATURA" from a leap of the SAME DIRECTION---warning
 						// Preparation to dissonance can't be stationary because that would have been resolved by the suspension check
 						
@@ -624,7 +632,9 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 			const int preparation_end{ i - 1 };
 			// I don't think the other voice can move during the escape tone
 
-			if (!sonority_array.at(preparation_end).is_sonority_dissonant(dissonant_intervals)
+			if ((std::abs(sonority_array.at(preparation_end).get_note_motion(voice).first) <= 1)
+				// Preparation moves by step
+				&& (!sonority_array.at(preparation_end).is_sonority_dissonant(dissonant_intervals))
 				// End of preparation must be consonant
 				&& (current_sonority.get_note(voice).durationData.durationTimeTicks <= current_sonority.get_index() - sonority_array.at(preparation_start).get_index())
 				// Preparation must be longer than or equal in length to escape tone
@@ -701,6 +711,99 @@ void check_with_given_config(const std::pair<std::vector<int>, std::vector<int>>
 		}
 	}
 	check_dissonance_handling(dissonant_intervals, stripped_sonority_array, error_message_box, warning_message_box, is_tick_dissonance_start, write_to_is_tick_dissonance_start, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array); // Only check lowest level
+}
+
+void check_outer_voice(const SonorityArray& sonority_array, std::vector<int> index_array, const int outer_voice, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box) {
+	const int inner_voice{ (outer_voice == 0) ? 1 : 0 };
+
+	for (int i{ 0 }; i < index_array.size() - 1; ++i) { // Subtract 1 because we don't want to check the last sonority
+		const Sonority& current_sonority{ sonority_array.at(index_array.at(i)) };
+		const Sonority& next_sonority{ (sonority_array).at(index_array.at(i + 1)) };
+
+	// Avoid "direct"or "hidden" 5ths or 8vas (similar motion to those intervals).
+		if ((get_interval(current_sonority.get_note_1(), next_sonority.get_note_1(), true).second * get_interval(current_sonority.get_note_2(), next_sonority.get_note_2(), true).second > 0)
+			// If similar motion
+			&& (next_sonority.get_simple_interval().second == 7 || next_sonority.get_simple_interval().second == 0)
+			// If next sonority is a perfect consonance
+			)
+		{
+			if (!(std::abs(current_sonority.get_note_motion(outer_voice).first) <= 1))
+				// Allow if one voice is inner and exposed voice moves by step
+			{
+				send_warning_message(Message{ "Direct fifths or octaves between outer and inner voice", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+				// Error or warning?
+			}
+#ifdef DEBUG
+			else {
+				std::cout << "Direct fifths allowed between outer and inner voice: one voice is inner and exposed voice moves by step\n";
+			}
+#endif // DEBUG
+
+		}
+	}
+}
+
+void check_outer_voice_pair(const SonorityArray& sonority_array, std::vector<int> index_array, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const int voice_count) {
+	for (int i{ 0 }; i < index_array.size() - 1; ++i) {
+		const Sonority& current_sonority{ sonority_array.at(index_array.at(i)) };
+		const Sonority& next_sonority{ (sonority_array).at(index_array.at(i + 1)) };
+
+		const int upper_voice{ (current_sonority.get_signed_compound_interval().second < 0) ? 0 : 1 };
+
+		if ((get_interval(current_sonority.get_note_1(), next_sonority.get_note_1(), true).second * get_interval(current_sonority.get_note_2(), next_sonority.get_note_2(), true).second > 0))
+			// If similar motion
+		{
+			if (next_sonority.get_simple_interval().second == 0)
+				// Direct octaves
+			{
+				if ((!(std::abs(current_sonority.get_note_motion(upper_voice).first) <= 1))
+					// Allow if upper voice moves by step
+					|| (voice_count > 3)
+					// And 4 or more voices
+					)
+				{
+					if ((voice_count == 2)
+						// If two voices
+						|| (current_sonority.get_rhythmic_hierarchy() < next_sonority.get_rhythmic_hierarchy())
+						// Second interval is on downbeat
+						) {
+						send_error_message(Message{ "Direct octaves between outer voices", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
+					}
+					else {
+						send_warning_message(Message{ "Direct octaves between outer voices", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+					}
+				}
+#ifdef DEBUG
+				else {
+					std::cout << "Direct octaves allowed between outer voices: 4 or more voices, upper voice moves by step\n";
+				}
+#endif // DEBUG
+			}
+
+			if (next_sonority.get_simple_interval().second == 7) {
+				// Direct fifths
+				if (!(std::abs(current_sonority.get_note_motion(upper_voice).first) <= 1))
+					// Allow if upper voice moves by step
+				{
+					if ((voice_count == 2)
+						// If two voices
+						|| (current_sonority.get_rhythmic_hierarchy() < next_sonority.get_rhythmic_hierarchy())
+						// Second interval is on downbeat
+						) {
+						send_error_message(Message{ "Direct fifths between outer voices", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
+					}
+					else {
+						send_warning_message(Message{ "Direct fifths between outer voices", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+					}
+				}
+#ifdef DEBUG
+				else {
+					std::cout << "Direct fifths allowed between outer voices: upper voice moves by step\n";
+				}
+#endif // DEBUG
+			}
+		}
+	}
 }
 
 void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat) {
@@ -783,13 +886,13 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 		std::vector<Message> sa_21_error_message_box{};
 		std::vector<Message> sa_21_warning_message_box{};
 		check_with_given_config(default_dissonant_intervals, sa_21_error_message_box, sa_21_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_21, is_tick_dissonance_start, true, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
-		const bool sa_21_valid{ sa_21_error_message_box.size() == 0 };
+		const bool sa_21_valid{ sa_21_error_message_box.size() == 0 && sa_21_warning_message_box.size() <= settings::warning_threshold };
 
 		std::vector<Message> sa_12_error_message_box{};
 		std::vector<Message> sa_12_warning_message_box{};
 		check_with_given_config(default_dissonant_intervals, sa_12_error_message_box, sa_12_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_12, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
 		// write_to_is_tick_dissonance_start is false this time because whether a note is dissonant doesn't depend on voice order here
-		const bool sa_12_valid{ sa_12_error_message_box.size() == 0 };
+		const bool sa_12_valid{ sa_12_error_message_box.size() == 0 && sa_12_warning_message_box.size() <= settings::warning_threshold };
 
 		if (sa_21_valid && sa_12_valid) {
 			// canon.error_message_box() is empty by default
@@ -801,11 +904,11 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 			}
 		}
 		else if (sa_21_valid) {
-			canon.warning_message_box() = sa_12_warning_message_box;
+			canon.warning_message_box() = sa_21_warning_message_box;
 			canon.add_non_invertible_voice_pair(voice_pair);
 		}
 		else if (sa_12_valid) {
-			canon.warning_message_box() = sa_21_warning_message_box;
+			canon.warning_message_box() = sa_12_warning_message_box;
 			canon.add_non_invertible_voice_pair(std::pair<int, int>{ voice_pair.second, voice_pair.first });
 		}
 		else {
@@ -817,25 +920,116 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 		print_messages(canon);
 #endif // DEBUG
 
-		// Check whether one of the voices can be in the bass
+	// Check bass/top/outer voice pairs
+		bool sa_2b1_valid{ true };
+		bool sa_21t_valid{ true };
 		if (sa_21_valid) {
+		// 2 as bass
 			std::vector<Message> sa_2b1_error_message_box{}; // 2-bass, 1
-			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_2b1_error_message_box, std::vector<Message>{}, index_arrays_for_sonority_arrays, stripped_sonority_array, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
-			if (sa_21_error_message_box.size() == 0) {
+			std::vector<Message> sa_2b1_warning_message_box{};
+			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_2b1_error_message_box, sa_2b1_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_21, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
+			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
+				if (index_array.size() > 0) {
+					check_outer_voice(sonority_array_21, index_array, 1, sa_2b1_error_message_box, sa_2b1_warning_message_box);
+				}
+			}
+			if (sa_2b1_error_message_box.size() > 0 || sa_2b1_warning_message_box.size() > settings::warning_threshold) {
 				canon.add_invalid_bass_voice(1); // Voice 2 is index 1
+				sa_2b1_valid = false;
+			}
+
+		// 1 as top
+			std::vector<Message> sa_21t_error_message_box{}; // 2-bass, 1
+			std::vector<Message> sa_21t_warning_message_box{};
+			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
+				if (index_array.size() > 0) {
+					check_outer_voice(sonority_array_21, index_array, 0, sa_21t_error_message_box, sa_21t_warning_message_box);
+				}
+			}
+			if (sa_21t_error_message_box.size() > 0 || sa_21t_warning_message_box.size() > settings::warning_threshold) {
+				canon.add_invalid_top_voice(0);
+				sa_21t_valid = false;
 			}
 		}
+		else {
+			sa_2b1_valid = false;
+			sa_21t_valid = false;
+		}
+
+		bool sa_1b2_valid{ true };
+		bool sa_12t_valid{ true };
 		if (sa_12_valid) {
+			// 1 as bass
 			std::vector<Message> sa_1b2_error_message_box{};
-			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_1b2_error_message_box, std::vector<Message>{}, index_arrays_for_sonority_arrays, stripped_sonority_array, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
-			if (sa_1b2_error_message_box.size() == 0) {
-				canon.add_invalid_bass_voice(0); // Voice 1 is index 0
+			std::vector<Message> sa_1b2_warning_message_box{};
+			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_1b2_error_message_box, sa_1b2_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_12, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
+			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
+				if (index_array.size() > 0) {
+					check_outer_voice(sonority_array_12, index_array, 0, sa_1b2_error_message_box, sa_1b2_warning_message_box);
+				}
+			}
+			if (sa_1b2_error_message_box.size() > 0 || sa_1b2_warning_message_box.size() > settings::warning_threshold) {
+				canon.add_invalid_bass_voice(0);
+				sa_1b2_valid = false;
+			}
+
+			// 2 as top
+			std::vector<Message> sa_12t_error_message_box{};
+			std::vector<Message> sa_12t_warning_message_box{};
+			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
+				if (index_array.size() > 0) {
+					check_outer_voice(sonority_array_12, index_array, 1, sa_12t_error_message_box, sa_12t_warning_message_box);
+				}
+			}
+			if (sa_12t_error_message_box.size() > 0 || sa_12t_warning_message_box.size() > settings::warning_threshold) {
+				canon.add_invalid_top_voice(1);
+				sa_12t_valid = false;
+			}
+		}
+		else {
+			sa_1b2_valid = false;
+			sa_12t_valid = false;
+		}
+		
+	// Both are outer voices
+		if (!sa_2b1_valid || !sa_21t_valid)	{
+			canon.add_invalid_outer_voice_pair(std::pair<int, int>{ voice_pair.second, voice_pair.first });
+		}
+		else {
+			// 2o1o
+			std::vector<Message> sa_2o1o_error_message_box{};
+			std::vector<Message> sa_2o1o_warning_message_box{};
+			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
+				if (index_array.size() > 0) {
+					check_outer_voice_pair(sonority_array_21, index_array, sa_2o1o_error_message_box, sa_2o1o_warning_message_box, voice_count);
+				}
+			}
+			if (sa_2o1o_error_message_box.size() > 0 || sa_2o1o_warning_message_box.size() > settings::warning_threshold) {
+				canon.add_invalid_outer_voice_pair(std::pair<int, int>{ voice_pair.second, voice_pair.first });
+			}
+		}
+
+		if (!sa_1b2_valid || !sa_12t_valid) {
+			canon.add_invalid_outer_voice_pair(voice_pair);
+		}
+		else {
+			// 1o2o
+			std::vector<Message> sa_1o2o_error_message_box{};
+			std::vector<Message> sa_1o2o_warning_message_box{};
+			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
+				if (index_array.size() > 0) {
+					check_outer_voice_pair(sonority_array_21, index_array, sa_1o2o_error_message_box, sa_1o2o_warning_message_box, voice_count);
+				}
+			}
+
+			if (sa_1o2o_error_message_box.size() > 0 || sa_1o2o_warning_message_box.size() > settings::warning_threshold) {
+				canon.add_invalid_outer_voice_pair(voice_pair);
 			}
 		}
 
 #ifdef DEBUG
 		std::cout << "\n\n";
-		std::cout << "Canon is " << ((canon.error_message_box().size() == 0) ? "valid\n" : "invalid\n");
+		std::cout << "Canon is " << ((canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings::warning_threshold) ? "valid\n" : "invalid\n");
 		std::cout << "Warning count: " << canon.warning_message_box().size() << '\n';
 
 		if (canon.error_message_box().size() == 0) {
@@ -847,7 +1041,19 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 
 			std::cout << "Invalid bass voices:";
 			for (const int voice : canon.get_invalid_bass_voices()) {
-				std::cout << ' ' << std::to_string(voice);
+				std::cout << ' ' << std::to_string(voice) << '.';
+			}
+			std::cout << '\n';
+
+			std::cout << "Invalid top voices:";
+			for (const int voice : canon.get_invalid_top_voices()) {
+				std::cout << ' ' << std::to_string(voice) << '.';
+			}
+			std::cout << '\n';
+
+			std::cout << "Invalid outer voice pairs:";
+			for (const std::pair<int, int>& pair : canon.get_invalid_outer_voice_pairs()) {
+				std::cout << " (" << std::to_string(pair.first) << ", " << std::to_string(pair.second) << ").";
 			}
 			std::cout << '\n';
 		}

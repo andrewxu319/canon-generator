@@ -96,7 +96,7 @@ const mx::api::MeasureData create_measure(const mx::api::NoteData& measure_long_
 const mx::api::DirectionData create_canon_label(const int warnings_count) {
 	mx::api::DirectionData direction{};
 	direction.words.emplace_back(mx::api::WordsData{});
-	direction.words.back().text = "Warnings count: " + std::to_string(warnings_count);
+	direction.words.back().text = "Warning count: " + std::to_string(warnings_count);
 	return direction;
 }
 
@@ -169,7 +169,7 @@ Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, co
 		output_voice.back().durationData = ticks_to_duration_data(output_voice.back().durationData.durationTimeTicks, ticks_per_measure, time_signature);
 	}
 	catch (...) { // TODO: specify exception
-		const Voice reattempt_splitted_notes{ split_note(output_voice.back(), get_last_key_before(original_note.durationData.durationTimeTicks - first_half_ticks), ticks_per_measure, time_signature) };
+ 		const Voice reattempt_splitted_notes{ split_note(output_voice.back(), get_last_key_before(original_note.durationData.durationTimeTicks - first_half_ticks), ticks_per_measure, time_signature) };
 		output_voice.pop_back();
 		for (mx::api::NoteData reattempt_splitted_note : reattempt_splitted_notes) {
 			output_voice.emplace_back(reattempt_splitted_note);
@@ -411,8 +411,11 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 #endif // SINGLE_SHIFT_CHECK
 
 #ifdef SINGLE_SHIFT_CHECK
-				const int v_shift{ 0 };
+				const int v_shift{ -3 };
 				const int h_shift{ 32 };
+				if (h_shift > leader_length_ticks) {
+					std::cout << "h_shift is too large\n";
+				}
 #endif // SINGLE_SHIFT_CHECK
 
 				// Create follower (LOOP THIS)

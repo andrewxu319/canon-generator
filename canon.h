@@ -66,6 +66,26 @@ public:
 		m_non_invertible_voice_pairs.emplace_back(pair);
 	}
 
+	const std::vector<int>& get_invalid_top_voices() const {
+		return m_invalid_top_voices;
+	}
+
+	void add_invalid_top_voice(const int value) {
+		if (std::find(m_invalid_top_voices.begin(), m_invalid_top_voices.end(), value) == m_invalid_top_voices.end()) {
+			// Check for duplicates
+			m_invalid_top_voices.push_back(value);
+		}
+	}
+
+	const std::vector<std::pair<int, int>>& get_invalid_outer_voice_pairs() const {
+		return m_invalid_outer_voice_pairs;
+	}
+
+	void add_invalid_outer_voice_pair(const std::pair<int, int>& pair) {
+		// Lower, upper
+		m_invalid_outer_voice_pairs.emplace_back(pair);
+	}
+
 private:
 	std::vector<Voice> m_texture{};
 	int m_max_h_shift{}; // Also tightness
@@ -73,9 +93,10 @@ private:
 	std::vector<Message> m_warning_message_box{};
 	std::vector<Message> m_quality_message_box{};
 	//int m_voice_combinations{};
-	std::vector<int> m_invalid_bass_voices{};
 	std::vector<std::pair<int, int>> m_non_invertible_voice_pairs{}; // Number of voice pairs that are not invertible (weighted equally regardless of how many there are)
-	int m_outer_voice_errors{}; // Number of voice pairs that have outer voice-specific errors 
+	std::vector<int> m_invalid_bass_voices{};
+	std::vector<int> m_invalid_top_voices{};
+	std::vector<std::pair<int, int>> m_invalid_outer_voice_pairs{}; // Ordered
 	int m_canon_quality{}; // Combined weighted score of warning_count, max_h_shift, invertibility, outer_voice_errors, and valid_bass_voices
 };
 
