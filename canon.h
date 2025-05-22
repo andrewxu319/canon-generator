@@ -57,12 +57,13 @@ public:
 		}
 	}
 
-	const int get_invertibility() const {
-		return m_invertibility;
+	const std::vector<std::pair<int, int>>& get_non_invertible_voice_pairs() const {
+		return m_non_invertible_voice_pairs;
 	}
 
-	void increment_invertibility() {
-		++m_invertibility;
+	void add_non_invertible_voice_pair(const std::pair<int, int>& pair) {
+		// Lower, upper
+		m_non_invertible_voice_pairs.emplace_back(pair);
 	}
 
 private:
@@ -71,9 +72,9 @@ private:
 	std::vector<Message> m_error_message_box{};
 	std::vector<Message> m_warning_message_box{};
 	std::vector<Message> m_quality_message_box{};
-	int voice_combinations{};
+	//int m_voice_combinations{};
 	std::vector<int> m_invalid_bass_voices{};
-	int m_invertibility{}; // Number of voice pairs that are not invertible (weighted equally regardless of how many there are)
+	std::vector<std::pair<int, int>> m_non_invertible_voice_pairs{}; // Number of voice pairs that are not invertible (weighted equally regardless of how many there are)
 	int m_outer_voice_errors{}; // Number of voice pairs that have outer voice-specific errors 
 	int m_canon_quality{}; // Combined weighted score of warning_count, max_h_shift, invertibility, outer_voice_errors, and valid_bass_voices
 };

@@ -75,8 +75,7 @@ const Interval get_interval(const mx::api::NoteData& note_1, const mx::api::Note
 }
 
 const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2,
-	const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals
-	= std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 6}, std::vector<int>{} }) {
+	const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals) {
 	// <scale degrees, semitones>
 
 	// Exempt augmented unisons since raised/lowered leading tones are weird and glitchy

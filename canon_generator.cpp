@@ -17,7 +17,7 @@
 #include <algorithm>
 
 #define DEBUG
-#define SINGLE_SHIFT_CHECK
+//#define SINGLE_SHIFT_CHECK
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
 
@@ -412,7 +412,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 
 #ifdef SINGLE_SHIFT_CHECK
 				const int v_shift{ 0 };
-				const int h_shift{ 4 };
+				const int h_shift{ 32 };
 #endif // SINGLE_SHIFT_CHECK
 
 				// Create follower (LOOP THIS)
@@ -442,11 +442,12 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 					//std::cout << "Canon rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
 					continue;
+					//valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift });
 				}
 				else {
 					valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift });
 #ifdef DEBUG
-					std::cout << "Valid canon! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
+					//std::cout << "Valid canon! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
 				}
 			}

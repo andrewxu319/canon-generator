@@ -36,6 +36,14 @@ public:
 		return m_note_2;
 	}
 
+	mx::api::NoteData& note_1() {
+		return m_note_1;
+	}
+
+	mx::api::NoteData& note_2() {
+		return m_note_2;
+	}
+
 	const mx::api::NoteData& get_note(const int voice) const {
 		if (voice == 0) {
 			return m_note_1;
@@ -90,8 +98,8 @@ public:
 
 private:
 	const int m_index{}; // FIX
-	const mx::api::NoteData m_note_1{ mx::api::NoteData{} };
-	const mx::api::NoteData m_note_2{ mx::api::NoteData{} };
+	mx::api::NoteData m_note_1{ mx::api::NoteData{} };
+	mx::api::NoteData m_note_2{ mx::api::NoteData{} };
 	const Interval m_compound_interval{ get_interval(m_note_1, m_note_2, false) };
 	const Interval m_signed_compound_interval{ get_interval(m_note_1, m_note_2, true) }; // positive = note_1 lower
 	const Interval m_simple_interval{ m_compound_interval.first % 7, m_compound_interval.second % 12 };

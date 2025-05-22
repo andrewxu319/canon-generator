@@ -2,10 +2,13 @@ INPUT CHECKS
 - Each measure must have the same key signature
 
 RANDOM NOTES
+- when calculating number of valid bass voices, subtract the number of non invertible voice pairs
 - slowest part seems to be generating the xml/part data
 
 TODO
-- parallel fifths---make it have follower both above and below. maybe check every combination/order
+- consonant fourths
+- simultaneous dissonances
+
 - delete empty voices (e.g. if max_voices = 3 but only 2-part canons found)
 - "versatility" score
 - enums for interval names
