@@ -17,7 +17,7 @@
 #include <algorithm>
 
 #define DEBUG
-//#define SINGLE_SHIFT_CHECK
+#define SINGLE_SHIFT_CHECK
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
 
@@ -411,8 +411,8 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 #endif // SINGLE_SHIFT_CHECK
 
 #ifdef SINGLE_SHIFT_CHECK
-				const int v_shift{ -3 };
-				const int h_shift{ 32 };
+				const int v_shift{ 0 };
+				const int h_shift{ 4 };
 				if (h_shift > leader_length_ticks) {
 					std::cout << "h_shift is too large\n";
 				}

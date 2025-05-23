@@ -7,7 +7,7 @@
 #include <iostream>
 #include <cmath>
 
-//#define DEBUG // When defined, all errors will show. Encountering an error will not call return
+#define DEBUG // When defined, all errors will show. Encountering an error will not call return
 
 void send_error_message(const Message& error, std::vector<Message>& error_message_box){
 	for (Message& existing_error : error_message_box) {
@@ -128,7 +128,7 @@ const bool are_upbeat_parallels_legal(const SonorityArray& sonority_array, const
 	return false;
 }
 
-void check_voice_independence(const SonorityArray& sonority_array, std::vector<int> index_array, const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const int ticks_per_measure, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::size_t voice_count) {
+void check_voice_independence(const SonorityArray& sonority_array, std::vector<int> index_array, const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const int ticks_per_measure, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::size_t voice_count, const ScaleDegree& leading_tone) {
 	for (int i{ 0 }; i < index_array.size() - 1; ++i) { // Subtract 1 because we don't want to check the last sonority
 		const Sonority& current_sonority{ sonority_array.at(index_array.at(i)) };
 		const Sonority& next_sonority{ (sonority_array).at(index_array.at(i + 1)) };
@@ -140,21 +140,99 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		{
 			continue;
 		}
-		
+
+
+		// Avoid doubled leading tone
+		if ((current_sonority.get_note_1().pitchData.step == leading_tone.step && current_sonority.get_note_1().pitchData.alter == leading_tone.alter)
+			&& (current_sonority.get_note_2().pitchData.step == leading_tone.step && current_sonority.get_note_2().pitchData.alter == leading_tone.alter))
+		{
+			send_warning_message(Message{ "Doubled leading tone", current_sonority.get_index(), current_sonority.get_index() }, warning_message_box, error_message_box);
+		}
+
+		// Avoid following a perfect consonance with another one.
+		if ((current_sonority.get_simple_interval().second == 7 || current_sonority.get_simple_interval().second == 0)
+			&& (next_sonority.get_simple_interval().second == 7 || next_sonority.get_simple_interval().second == 0))
+		{
+			send_warning_message(Message{ "Consecutive perfect consonances", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+		}
+
+		// Avoid similar motion from a 2nd to a 3rd
+		// Remove? Warning?
+		if (current_sonority.get_motion_type() == similar
+			&& ((current_sonority.get_simple_interval().first == 1
+				&& next_sonority.get_simple_interval().first == 2)
+				// 2nd to 3rd
+				|| (current_sonority.get_simple_interval().first == 6
+					&& next_sonority.get_simple_interval().first == 5)))
+			// Inverted---7th to 6th
+		{
+			send_warning_message(Message{ "Similar motion from a 2nd to a 3rd", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+		}
+
+		// Avoid more than 3 successive uses of the same interval in the same voices
+		try {
+			if (current_sonority.get_signed_compound_interval().first == next_sonority.get_signed_compound_interval().first
+				&& current_sonority.get_signed_compound_interval().first == sonority_array.at(index_array.at(i + 2)).get_signed_compound_interval().first
+				// If 3 successive uses of the same interval in the same voices
+				&& (i == 0 || current_sonority.get_compound_interval().first != sonority_array.at(index_array.at(i - 1)).get_compound_interval().first)
+				// If previous sonority isn't the same interval---ensures no duplicate warnings are raised if parallels continue for longer (CAN COMMENT THIS OUT IF WE WANT MULTIPLE WARNINGS)
+				)
+			{
+				if (voice_count > 2) {
+					// Allowed in 3+ parts
+					send_warning_message(Message{ "Parallel intervals for 4 or more notes (might continue beyond indicated final note)", current_sonority.get_index(), sonority_array.at(index_array.at(i + 2)).get_index() }, warning_message_box, error_message_box);
+				}
+				else {
+					send_error_message(Message{ "Parallel intervals for 4 or more notes (might continue beyond indicated final note)", current_sonority.get_index(), sonority_array.at(index_array.at(i + 2)).get_index() }, error_message_box);
+#ifndef DEBUG
+					return;
+#endif
+				}
+			}
+		}
+		catch (...) {}
+
+		// Allow parallels if the faster voice leaps by more than a third from the first perfect interval. Overrides all other rules for parallels
+		bool parallels_allowed{ false };
+		if (index_array.at(i + 1) - index_array.at(i) >= 2) {
+			// There needs to be a gap between the two perfect consonances
+			for (int voice{ 0 }; voice < 2; ++voice) {
+				const int other_voice{ (voice == 0) ? 1 : 0 };
+
+				for (int j{ index_array.at(i) }; j < index_array.at(i + 1) - 1; ++j)
+					// For each intervening note
+				{
+					if ((std::abs(sonority_array.at(j).get_note_motion(voice).first) > 2)
+						// Leap of more than a third
+						&& (sonority_array.at(j).get_note_motion(other_voice).second == 0)
+						// Other voice cannot move
+						) {
+#ifdef DEBUG
+						std::cout << "Parallels allowed: faster voice leaps by more than a third from the first perfect interval\n";
+#endif // DEBUG
+						parallels_allowed = true;
+					}
+				}
+			}
+		}
+		if (parallels_allowed) {
+			continue;
+		}
+
 		// Avoid parallel fifths and octaves between adjacent notes.
 		if (current_sonority.get_simple_interval().second == 7 && next_sonority.get_simple_interval().second == 7) {
 			send_error_message(Message{ "Parallel fifths between adjacent notes or downbeats", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
-			#ifndef DEBUG
+#ifndef DEBUG
 			return;
-			#endif
+#endif
+		} else
+		if (current_sonority.get_simple_interval().first == 0 && next_sonority.get_simple_interval().first == 0) {
+
+			send_error_message(Message{ "Parallel octaves between adjacent notes or downbeats", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
+#ifndef DEBUG
+			return;
+#endif
 		}
-		else
-			if (current_sonority.get_simple_interval().first == 0 && next_sonority.get_simple_interval().first == 0) {
-				send_error_message(Message{ "Parallel octaves between adjacent notes or downbeats", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
-				#ifndef DEBUG
-				return;
-				#endif
-			}
 
 		// Avoid parallel fifths and octaves between any part of a beat and an accented note on the next beat.
 		std::vector<int> checked_rhythmic_levels{}; // Only get FIRST of any given downbeat level
@@ -203,90 +281,33 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		// Avoid parallel fifths and octaves between notes following adjacent accents, if voices are 2:1
 		for (int j{ i + 1 }; j < index_array.size(); ++j) {
 			const Sonority& next_upbeat{ sonority_array.at(index_array.at(j)) };
+
+			// Unless the gap between them is a measure or more (arbitrary line I drew)
+			if (next_upbeat.get_index() - current_sonority.get_index() >= ticks_per_measure) {
+				continue;
+			}
+
 			if (next_upbeat.get_rhythmic_hierarchy() == current_sonority.get_rhythmic_hierarchy()) {
 				if (current_sonority.get_simple_interval().second == 7 && next_upbeat.get_simple_interval().second == 7) {
 					if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j, dissonant_intervals)) {
 						send_error_message(Message{ "Parallel fifths between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
-						#ifndef DEBUG
+#ifndef DEBUG
 						return;
-						#endif
+#endif
 					}
 				}
 				else
 					if (current_sonority.get_simple_interval().first == 0 && next_upbeat.get_simple_interval().first == 0) {
 						if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j, dissonant_intervals)) {
 							send_error_message(Message{ "Parallel octaves between consecutive upbeats", current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
-							#ifndef DEBUG
+#ifndef DEBUG
 							return;
-							#endif
+#endif
 						}
 					}
 				break;
 			}
 		}
-
-/*
-	// CHANGE TO WARNING?
-	// Avoid leaping motion in two voices moving to a perfect interval. ONLY IF INNER PART
-		if (std::abs(current_sonority.get_note_1_motion().first) != 1 &&
-			std::abs(current_sonority.get_note_2_motion().first) != 1) {
-			if (next_sonority.get_simple_interval().second == 7) {
-				send_error_message(Message{ "Both voices leap to a perfect fifth", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
-			}
-#ifndef DEBUG
-return;
-#endif else
-			if (next_sonority.get_simple_interval().second == 0) {
-				send_error_message(Message{ "Both voices leap to an octave", current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
-				#ifndef DEBUG
-				return;
-				#endif
-			}
-		}
-*/
-
-	// Avoid following a perfect consonance with another one.
-		if ((current_sonority.get_simple_interval().second == 7 || current_sonority.get_simple_interval().second == 0)
-			&& (next_sonority.get_simple_interval().second == 7 || next_sonority.get_simple_interval().second == 0))
-		{
-			send_warning_message(Message{ "Consecutive perfect consonances", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
-		}
-
-	// Avoid similar motion from a 2nd to a 3rd
-	// Remove? Warning?
-		if (current_sonority.get_motion_type() == similar
-			&& ((current_sonority.get_simple_interval().first == 1
-					&& next_sonority.get_simple_interval().first == 2)
-				// 2nd to 3rd
-				|| (current_sonority.get_simple_interval().first == 6
-					&& next_sonority.get_simple_interval().first == 5)))
-			// Inverted---7th to 6th
-		{
-			send_warning_message(Message{ "Similar motion from a 2nd to a 3rd", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
-		}
-
-	// Avoid more than 3 successive uses of the same interval in the same voices
-		try {
-			if (current_sonority.get_signed_compound_interval().first == next_sonority.get_signed_compound_interval().first
-				&& current_sonority.get_signed_compound_interval().first == sonority_array.at(index_array.at(i + 2)).get_signed_compound_interval().first
-				// If 3 successive uses of the same interval in the same voices
-				&& (i == 0 || current_sonority.get_compound_interval().first != sonority_array.at(index_array.at(i - 1)).get_compound_interval().first)
-				// If previous sonority isn't the same interval---ensures no duplicate warnings are raised if parallels continue for longer (CAN COMMENT THIS OUT IF WE WANT MULTIPLE WARNINGS)
-				)
-			{
-				if (voice_count > 2) {
-					// Allowed in 3+ parts
-					send_warning_message(Message{ "Parallel intervals for 4 or more notes (might continue beyond indicated final note)", current_sonority.get_index(), sonority_array.at(index_array.at(i + 2)).get_index() }, warning_message_box, error_message_box);
-				}
-				else {
-					send_error_message(Message{ "Parallel intervals for 4 or more notes (might continue beyond indicated final note)", current_sonority.get_index(), sonority_array.at(index_array.at(i + 2)).get_index() }, error_message_box);
-#ifndef DEBUG
-					return;
-#endif
-				}
-			}
-		}
-		catch(...){}
 	}
 }
 
@@ -501,12 +522,19 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 					// LEGAL RETARDATION
 					if (current_sonority.get_note(voice).pitchData.step == leading_tone.step && current_sonority.get_note(voice).pitchData.alter == leading_tone.alter
 						&& resolution.get_note(voice).pitchData.step == tonic.step && resolution.get_note(voice).pitchData.alter == tonic.alter) {
-						// If retardation that resolves up by semitone (want to only allow leading tone resolutions but can't be bothered
+						// If retardation resolves from leading tone to tonic
+
+						if (resolution.get_simple_interval().first == 0) {
+							// Can't really resolve to a perfect 5th since other voice can't move
+							send_warning_message(Message{ "Retardation resolution is doubled!", current_sonority.get_index(), resolution.get_index() }, warning_message_box, error_message_box);
+						}
+						else {
 #ifdef DEBUG
-						std::cout << "retardation resolves up by semitone\n";
+							std::cout << "retardation resolves up by semitone\n";
 #endif // DEBUG
-						allowed_dissonances.at(i) = true;
-						return;
+							allowed_dissonances.at(i) = true;
+							return;
+						}
 					}
 
 /* commenting this out because we want to check all other conditions
@@ -525,7 +553,12 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 					if (get_interval(current_sonority.get_note(voice), resolution.get_note(voice), true).first == -1)
 						// Moves by step downwards into resolution
 					{
-						if (resolution.get_simple_interval().first == 0 || resolution.get_simple_interval().second == 7) {
+						if ((current_sonority.get_simple_interval().first == 6) && (resolution.get_simple_interval().first == 0))
+							// Prohibit 7-8 suspensions
+						{
+							send_error_message(Message{ "7-8 suspension", current_sonority.get_index(), resolution.get_index() }, error_message_box);
+						}
+						else if (resolution.get_simple_interval().first == 0 || resolution.get_simple_interval().second == 7) {
 							send_warning_message(Message{ "Suspension resolves to perfect consonance", current_sonority.get_index(), resolution.get_index() }, warning_message_box, error_message_box);
 						}
 
@@ -563,8 +596,19 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 						)
 					{
 						if (resolution.get_simple_interval().first == 0) {
-							// Can't really resolve to a perfect 5th since other voice can't move
-							send_warning_message(Message{ "Appogiatura resolution is doubled!", current_sonority.get_index(), resolution.get_index() }, warning_message_box, error_message_box);
+							const int lower_voice{ (current_sonority.get_signed_compound_interval().second > 0) ? 0 : 1 };
+							if ((current_sonority.get_simple_interval().first == 6) && (resolution.get_simple_interval().first == 0)
+								// Prohibit 7-8 appogiaturas in the lower voice
+								&& (get_interval(current_sonority.get_note(lower_voice), next_sonority.get_note(lower_voice), true).second != 0)
+								// Lower voice moves (signed doesn't matter, signed interval is cheaper)
+								)
+							{
+								send_error_message(Message{ "7-8 appogiatura", current_sonority.get_index(), resolution.get_index() }, error_message_box);
+							}
+							else {
+								// Can't really resolve to a perfect 5th since other voice can't move
+								send_warning_message(Message{ "Appogiatura resolution is doubled!", current_sonority.get_index(), resolution.get_index() }, warning_message_box, error_message_box);
+							}
 						}
 #ifdef DEBUG
 						std::cout << "appogiatura\n";
@@ -707,7 +751,7 @@ void check_dissonance_handling(const std::pair<std::vector<int>, std::vector<int
 void check_with_given_config(const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const std::vector<std::vector<int>>& index_arrays_for_sonority_arrays, const SonorityArray& stripped_sonority_array, std::vector<bool>& is_tick_dissonance_start, const bool write_to_is_tick_dissonance_start, const int ticks_per_measure, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::size_t voice_count) {
 	for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
 		if (index_array.size() > 0) {
-			check_voice_independence(stripped_sonority_array, index_array, dissonant_intervals, error_message_box, warning_message_box, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
+			check_voice_independence(stripped_sonority_array, index_array, dissonant_intervals, error_message_box, warning_message_box, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count, leading_tone);
 		}
 	}
 	check_dissonance_handling(dissonant_intervals, stripped_sonority_array, error_message_box, warning_message_box, is_tick_dissonance_start, write_to_is_tick_dissonance_start, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array); // Only check lowest level
@@ -739,6 +783,24 @@ void check_outer_voice(const SonorityArray& sonority_array, std::vector<int> ind
 			}
 #endif // DEBUG
 
+		}
+
+	// Avoid leaping motion in two voices moving to a perfect interval. ONLY IF INNER PART
+		if (std::abs(current_sonority.get_note_1_motion().first) != 1 &&
+			std::abs(current_sonority.get_note_2_motion().first) != 1) {
+			if (next_sonority.get_simple_interval().second == 7) {
+				send_warning_message(Message{ "Both voices leap to a perfect fifth", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+#ifndef DEBUG
+				return;
+#endif 
+			}
+		else
+			if (next_sonority.get_simple_interval().second == 0) {
+				send_warning_message(Message{ "Both voices leap to an octave", current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+#ifndef DEBUG
+				return;
+#endif
+			}
 		}
 	}
 }
