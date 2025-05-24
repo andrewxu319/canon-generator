@@ -978,10 +978,6 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 			canon.error_message_box() = sa_21_error_message_box;
 		}
 
-#ifdef DEBUG
-		print_messages(canon);
-#endif // DEBUG
-
 	// Check bass/top/outer voice pairs
 		bool sa_2b1_valid{ true };
 		bool sa_21t_valid{ true };
@@ -1054,10 +1050,10 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 		}
 		
 	// Both are outer voices
-		if (!sa_2b1_valid || !sa_21t_valid)	{
-			canon.add_invalid_outer_voice_pair(std::pair<int, int>{ voice_pair.second, voice_pair.first });
-		}
-		else {
+		//if (!sa_2b1_valid || !sa_21t_valid)	{
+		//	canon.add_invalid_outer_voice_pair(std::pair<int, int>{ voice_pair.second, voice_pair.first });
+		//}
+		//else {
 			// 2o1o
 			std::vector<Message> sa_2o1o_error_message_box{};
 			std::vector<Message> sa_2o1o_warning_message_box{};
@@ -1069,12 +1065,12 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 			if (sa_2o1o_error_message_box.size() > 0 || sa_2o1o_warning_message_box.size() > settings::warning_threshold) {
 				canon.add_invalid_outer_voice_pair(std::pair<int, int>{ voice_pair.second, voice_pair.first });
 			}
-		}
+		//}
 
-		if (!sa_1b2_valid || !sa_12t_valid) {
-			canon.add_invalid_outer_voice_pair(voice_pair);
-		}
-		else {
+		//if (!sa_1b2_valid || !sa_12t_valid) {
+		//	canon.add_invalid_outer_voice_pair(voice_pair);
+		//}
+		//else {
 			// 1o2o
 			std::vector<Message> sa_1o2o_error_message_box{};
 			std::vector<Message> sa_1o2o_warning_message_box{};
@@ -1087,39 +1083,10 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 			if (sa_1o2o_error_message_box.size() > 0 || sa_1o2o_warning_message_box.size() > settings::warning_threshold) {
 				canon.add_invalid_outer_voice_pair(voice_pair);
 			}
-		}
+		//}
 
 #ifdef DEBUG
-		std::cout << "\n\n";
-		std::cout << "Canon is " << ((canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings::warning_threshold) ? "valid\n" : "invalid\n");
-		std::cout << "Warning count: " << canon.warning_message_box().size() << '\n';
-
-		if (canon.error_message_box().size() == 0) {
-			std::cout << "Invalid voice pairs:";
-			for (const std::pair<int, int>& pair : canon.get_non_invertible_voice_pairs()) {
-				std::cout << " (" << std::to_string(pair.first) << ", " << std::to_string(pair.second) << ").";
-			}
-			std::cout << '\n';
-
-			std::cout << "Invalid bass voices:";
-			for (const int voice : canon.get_invalid_bass_voices()) {
-				std::cout << ' ' << std::to_string(voice) << '.';
-			}
-			std::cout << '\n';
-
-			std::cout << "Invalid top voices:";
-			for (const int voice : canon.get_invalid_top_voices()) {
-				std::cout << ' ' << std::to_string(voice) << '.';
-			}
-			std::cout << '\n';
-
-			std::cout << "Invalid outer voice pairs:";
-			for (const std::pair<int, int>& pair : canon.get_invalid_outer_voice_pairs()) {
-				std::cout << " (" << std::to_string(pair.first) << ", " << std::to_string(pair.second) << ").";
-			}
-			std::cout << '\n';
-		}
-		std::cout << "\n---------------------------------\n\n";
+			print_messages(canon);
 #endif // DEBUG
 	}
 }

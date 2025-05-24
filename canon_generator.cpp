@@ -400,7 +400,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 	for (Canon& template_canon : template_canons_array) {
 
 #ifndef SINGLE_SHIFT_CHECK
-		for (int h_shift{ template_canon.get_max_h_shift() + 1}; h_shift < leader_length_ticks * settings::min_tightness; ++h_shift) {
+		for (int h_shift{ template_canon.get_max_h_shift() + 1}; h_shift < leader_length_ticks * settings::h_shift_limit; ++h_shift) {
 
 			// Maximum h_shift increment because tick sizes are unpredictable for some reason
 			if (h_shift % (ticks_per_beat / settings::h_shift_increments_per_beat) != 0) {
@@ -419,9 +419,9 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 #endif // SINGLE_SHIFT_CHECK
 
 				// Create follower (LOOP THIS)
-				Canon canon{ template_canon.texture(), template_canon.get_max_h_shift()};
+				Canon canon{ template_canon.texture(), static_cast<double>(h_shift) / leader_length_ticks };
 				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
-				canon.texture().emplace_back(follower);
+				canon.add_voice(follower);
 
 				// Append empty measures to leader so both voices have the same number of complete measures
 				for (int i{ 0 }; i < canon.texture().size() - 1; ++i) { // Skip last one (follower)
@@ -499,15 +499,7 @@ int main() {
 		const int ticks_per_beat{ ticks_per_measure / time_signature.beats };
 		const int rhythmic_hierarchy_of_beat{ rhythmic_hierarchy_array.at(ticks_per_beat) }; // Second beat is always on the weakest beat hierarchies
 
-		// TODO: FORBID VOICE CROSSINGS
-
-		/*
-		* have an array store a list of partdata
-		* add to the list of partdata every iteration
-		* clear template_canons_array , add to it every iteration
-		* the function would take existing voices and create a new follower
-		* loop until template_canons_array is empty or when max_voices is reached
-		*/
+		// Until template_canons_array is empty or when max_voices is reached
 		int valid_canons_counter{ 0 };
 		std::vector<Canon> valid_canons{};
 		std::vector<Canon> template_canons_array{ Canon{std::vector<Voice>{leader}, 0} };
@@ -528,6 +520,9 @@ int main() {
 			return 0;
 		}
 
+		// Get various scores
+
+		// Generate output musicxml
 		std::vector<mx::api::PartData> valid_canons_parts_sequence(settings::max_voices);
 		for (Canon& canon : valid_canons) {
 			// Create musicxml
@@ -537,7 +532,7 @@ int main() {
 			parts_array.at(0) = leader_part;
 			for (int i{ 1 }; i < settings::max_voices; ++i) { // Skip first because first is leader part
 				if (i >= canon.texture().size()) {
-					canon.texture().emplace_back(Voice{});
+					canon.add_voice(Voice{});
 					for (int j{ 0 }; j < 2 * leader_length_measures; ++j) {
 						canon.texture().back().emplace_back(measure_long_rest); // Add one empty measure for now. Extend the part later
 					}
