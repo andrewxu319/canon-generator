@@ -16,8 +16,8 @@
 #include <cmath>
 #include <algorithm>
 
-#define DEBUG
-#define SINGLE_SHIFT_CHECK
+//#define DEBUG
+//#define SINGLE_SHIFT_CHECK
 
 using Voice = std::vector<mx::api::NoteData>; // Condensed voice in terminology from create_voice_array()
 
@@ -169,7 +169,7 @@ Voice split_note(mx::api::NoteData original_note, const int first_half_ticks, co
 		output_voice.back().durationData = ticks_to_duration_data(output_voice.back().durationData.durationTimeTicks, ticks_per_measure, time_signature);
 	}
 	catch (...) { // TODO: specify exception
- 		const Voice reattempt_splitted_notes{ split_note(output_voice.back(), get_last_key_before(original_note.durationData.durationTimeTicks - first_half_ticks), ticks_per_measure, time_signature) };
+ 		const Voice reattempt_splitted_notes{ split_note(output_voice.back(), std::min(ticks_per_measure, get_last_key_before(original_note.durationData.durationTimeTicks - first_half_ticks)), ticks_per_measure, time_signature) };
 		output_voice.pop_back();
 		for (mx::api::NoteData reattempt_splitted_note : reattempt_splitted_notes) {
 			output_voice.emplace_back(reattempt_splitted_note);
@@ -419,7 +419,8 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 #endif // SINGLE_SHIFT_CHECK
 
 				// Create follower (LOOP THIS)
-				Canon canon{ template_canon.texture(), static_cast<double>(h_shift) / leader_length_ticks };
+				const double max_h_shift_proportion{ static_cast<double>(h_shift) / leader_length_ticks };
+				Canon canon{ template_canon.texture(), h_shift, max_h_shift_proportion };
 				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
 				canon.add_voice(follower);
 
@@ -435,7 +436,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 				// This will change member variables in canon
 
 #ifdef SINGLE_SHIFT_CHECK
-				valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift });
+				valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift, max_h_shift_proportion });
 #endif // SINGLE_SHIFT_CHECK
 
 #ifndef SINGLE_SHIFT_CHECK
@@ -445,10 +446,10 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 					//std::cout << "Canon rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
 					continue;
-					//valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift });
+					//valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift, max_h_shift_proportion });
 				}
 				else {
-					valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift });
+					valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift, max_h_shift_proportion });
 #ifdef DEBUG
 					//std::cout << "Valid canon! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
@@ -502,7 +503,7 @@ int main() {
 		// Until template_canons_array is empty or when max_voices is reached
 		int valid_canons_counter{ 0 };
 		std::vector<Canon> valid_canons{};
-		std::vector<Canon> template_canons_array{ Canon{std::vector<Voice>{leader}, 0} };
+		std::vector<Canon> template_canons_array{ Canon{std::vector<Voice>{leader}, 0, 0 } };
 
 		for (int i{ 0 }; i < settings::max_voices - 1; ++i) {
 			const std::vector<Canon> valid_canons_for_current_voice{ generate_canons_for_new_voice(template_canons_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, tonic, dominant, leading_tone, minor_key, time_signature, measure_long_rest) };
@@ -518,6 +519,13 @@ int main() {
 		if (valid_canons_counter == 0) {
 			std::cout << "No valid canons found!\n";
 			return 0;
+		}
+
+		int max_voice_count{ 2 };
+		for (const Canon& canon : valid_canons) {
+			if (canon.get_voice_count() > max_voice_count) {
+				max_voice_count = canon.get_voice_count();
+			}
 		}
 
 		// Get various scores
@@ -553,7 +561,7 @@ int main() {
 
 			// FIGURE OUT HOW TO GET WARNINGS COUNT FOR EACH
 			//// Add text labels
-			parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(canon.get_warning_count()));
+			//parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(canon.get_warning_count()));
 
 			// Push parts in canon into final valid_canons_parts_sequence
 			for (int part{ 0 }; part < settings::max_voices; ++part) {
@@ -590,6 +598,27 @@ int main() {
 
 		//// Write file
 		write_file(output_score, settings::write_file_path); // output_score
+
+		std::cout << valid_canons_counter << " valid canons\n";
+		double warnings_sum{};
+		double h_shift_sum{};
+		double invertibility_sum{};
+		double outer_voice_pairs_sum{};
+		double quality_scores_sum{};
+		for (Canon& canon : valid_canons) {
+			warnings_sum += canon.get_warning_count();
+			h_shift_sum += canon.get_max_h_shift();
+			invertibility_sum += (1 - canon.get_non_invertible_voice_pairs_proportion());
+			outer_voice_pairs_sum += (1 - canon.get_invalid_outer_voice_pairs_proportion());
+			quality_scores_sum += canon.get_quality_score();
+		}
+		std::cout << "Max voice count: " << max_voice_count << '\n';
+		std::cout << "Average warnings count: " << warnings_sum / valid_canons_counter << '\n';
+		std::cout << "Average h_shift: " << h_shift_sum / valid_canons_counter << '\n';
+		std::cout << "Average invertibility: " << invertibility_sum / valid_canons_counter << '\n';
+		std::cout << "Average valid outer voice pairs proportion: " << outer_voice_pairs_sum / valid_canons_counter << '\n';
+		std::cout << "Average quality score: " << quality_scores_sum / valid_canons_counter << '\n';
+		std::cout << "Total score: " << valid_canons_counter + quality_scores_sum << '\n';
 	}
 	catch (const Exception& exception) {
 		std::cout << exception.getError();

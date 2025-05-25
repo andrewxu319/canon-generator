@@ -65,12 +65,21 @@ public:
 	}
 
 	const Interval get_simple_interval() const {
-		return Interval{ get_compound_interval().first % 7, get_compound_interval().second % 12 };
+		Interval interval{ get_interval(m_note_1, m_note_2, false) };
+		return Interval{ (interval.first >= 7) ? ((interval.first >= 14) ? (interval.first % 7) : (interval.first - 7)) : interval.first, (interval.second >= 12) ? ((interval.second >= 24) ? (interval.second % 12) : (interval.second - 12)) : interval.second };
 	}
 
-	const Interval get_signed_simple_interval() const {
-		return Interval{ (get_signed_compound_interval().first % 7 + 7) % 7, (get_signed_compound_interval().second % 12 + 12) % 12 };
+	void set_lower_voice(const int value) {
+		m_lower_voice = value;
 	}
+
+/* unused
+	const Interval get_signed_simple_interval() const {
+		const int first{ get_signed_compound_interval().first };
+		const int second{ get_signed_compound_interval().second };
+		return Interval{ (first >= 0) ? ((first >= 7) ? (first % 7) : first) : ((first <= -7) ? (-(-first % 7)) : first), (second % 12 + 12) % 12 };
+	}
+*/
 
 	const Interval get_note_1_motion() const {
 		return m_note_1_motion;
@@ -100,6 +109,7 @@ private:
 	const int m_index{}; // FIX
 	mx::api::NoteData m_note_1{ mx::api::NoteData{} };
 	mx::api::NoteData m_note_2{ mx::api::NoteData{} };
+	int m_lower_voice{ -1 };
 	//const Interval m_compound_interval{ get_interval(m_note_1, m_note_2, false) };
 	//const Interval m_signed_compound_interval{ get_interval(m_note_1, m_note_2, true) }; // positive = note_1 lower
 	//const Interval m_simple_interval{ m_compound_interval.first % 7, m_compound_interval.second % 12 };

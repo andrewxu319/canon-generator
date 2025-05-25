@@ -9,15 +9,17 @@
 using Voice = std::vector<mx::api::NoteData>;
 
 struct Message {
-	std::string_view description{};
 	int sonority_1_index{};
 	int sonority_2_index{};
 };
 
 class Canon {
 public:
-	Canon(const std::vector<Voice> texture, const double max_h_shift_proportion)
-		: m_texture{ texture }, m_max_h_shift_proportion{ max_h_shift_proportion }, m_voice_count{ static_cast<int>(texture.size()) } {
+	Canon(const std::vector<Voice> texture, const int max_h_shift, const double max_h_shift_proportion)
+		: m_texture{ texture },
+		m_max_h_shift{ max_h_shift },
+		m_max_h_shift_proportion{ max_h_shift_proportion },
+		m_voice_count{ static_cast<int>(texture.size())} {
 	}
 
 	std::vector<Voice>& texture() {
@@ -34,7 +36,11 @@ public:
 		return m_voice_count;
 	}
 
-	const int get_max_h_shift_proportion() const {
+	const int get_max_h_shift() const {
+		return m_max_h_shift;
+	}
+
+	const double get_max_h_shift_proportion() const {
 		return m_max_h_shift_proportion;
 	}
 
@@ -136,8 +142,8 @@ public:
 
 	const double get_quality_score() {
 		m_quality_score = 
-			- m_warning_message_box.size() * settings::warnings_count_weight
-			+ (m_voice_count - 2) * settings::voice_count_weight
+			- static_cast<int>(m_warning_message_box.size()) * settings::warnings_count_weight
+			//+ (m_voice_count - 2) * settings::voice_count_weight
 			- (settings::tightness_weight / settings::h_shift_limit) * m_max_h_shift_proportion + 0.5 * settings::tightness_weight // Add half of tightness_weight to center it on 0
 			- m_non_invertible_voice_pairs_proportion * settings::invertibility_weight
 			- m_invalid_outer_voice_pairs_proportion * settings::outer_voice_weight;
@@ -147,6 +153,7 @@ public:
 private:
 	std::vector<Voice> m_texture{};
 	int m_voice_count{};
+	int m_max_h_shift{}; // Also tightness
 	double m_max_h_shift_proportion{}; // Also tightness
 	std::vector<Message> m_error_message_box{};
 	std::vector<Message> m_warning_message_box{};
@@ -165,3 +172,4 @@ private:
 };
 
 void print_messages(Canon& canon);
+void print_results(Canon& canon);
