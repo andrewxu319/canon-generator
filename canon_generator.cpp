@@ -93,10 +93,44 @@ const mx::api::MeasureData create_measure(const mx::api::NoteData& measure_long_
 	return template_measure;
 }
 
-const mx::api::DirectionData create_canon_label(const int warnings_count) {
+const mx::api::DirectionData create_canon_label(const Canon& canon) {
+	mx::api::WordsData words{};
+	words.text += ("Warning count: " + std::to_string(canon.get_warning_count()) + '\n');
+
+	if (canon.get_non_invertible_voice_pairs().size() != 0) {
+		words.text += ("Invalid voice pairs:");
+		for (const std::pair<int, int>& pair : canon.get_non_invertible_voice_pairs()) {
+			words.text += " (" + std::to_string(pair.first) + ", " + std::to_string(pair.second) + ").";
+		}
+		words.text += ('\n');
+	}
+
+	if (canon.get_invalid_bass_voices().size() != 0) {
+		words.text += ("Invalid bass voices:");
+		for (const int voice : canon.get_invalid_bass_voices()) {
+			words.text += (' ' + std::to_string(voice) + '.');
+		}
+		words.text += ('\n');
+	}
+
+	if (canon.get_invalid_top_voices().size() != 0) {
+		words.text += ("Invalid top voices:");
+		for (const int voice : canon.get_invalid_top_voices()) {
+			words.text += (' ' + std::to_string(voice) + '.');
+		}
+		words.text += ('\n');
+	}
+
+	if (canon.get_invalid_outer_voice_pairs().size() != 0) {
+		words.text += ("Invalid top voices:");
+		for (const std::pair<int, int>& pair : canon.get_invalid_outer_voice_pairs()) {
+			words.text += (" (" + std::to_string(pair.first) + ", " + std::to_string(pair.second) + ").");
+		}
+		words.text += ('\n');
+	}
+
 	mx::api::DirectionData direction{};
-	direction.words.emplace_back(mx::api::WordsData{});
-	direction.words.back().text = "Warning count: " + std::to_string(warnings_count);
+	direction.words.emplace_back(words);
 	return direction;
 }
 
@@ -206,7 +240,7 @@ const Voice split_rests(const int ticks, const int tick_time_position, const int
 	return splitted_rests;
 }
 
-const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::vector<int>& key_signature, const ScaleDegree leading_tone, const bool minor_key, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy	
+const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::vector<int>& key_signature, const Key& key, const bool minor_key, const int ticks_per_measure, const mx::api::TimeSignatureData& time_signature) { // h_shift in ticks. voice is explicitly a copy	
 	// Vertical shift
 	if (v_shift != 0) {
 		for (mx::api::NoteData& note : voice) {
@@ -216,6 +250,11 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::
 			}
 
 			note.pitchData.alter = note.pitchData.alter - key_signature.at(static_cast<int>(note.pitchData.step)); // Apply extra accidentals (in addition to key signature)
+
+			if (minor_key && (note.pitchData.step == key.leading_tone.step) && (note.pitchData.alter == key.leading_tone.alter)) {
+				// If minor key note is the 7th
+				note.pitchData.alter -= 1; // Override normal accidental preservation
+			}
 
 			const int destination_int_pre_mod{ static_cast<int>(note.pitchData.step) + v_shift };
 			if (v_shift > 0) {
@@ -232,7 +271,7 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::
 			}
 
 			// Key signature
-			if (minor_key && (note.pitchData.step == leading_tone.step)) {
+			if (minor_key && (note.pitchData.step == key.leading_tone.step)) {
 				// If minor key note is the 7th
 				note.pitchData.alter += key_signature.at(static_cast<int>(note.pitchData.step)) + 1; // Override normal accidental preservation
 			}
@@ -394,34 +433,34 @@ const ScaleDegree get_tonic(const int fifths, const bool minor_key) {
 	return ScaleDegree{ static_cast<mx::api::Step>(step), alter };
 }
 
-std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_canons_array, const Voice& leader, const int leader_length_ticks, const int ticks_per_measure, const int ticks_per_beat, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::vector<int>& key_signature, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const bool minor_key, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest) {
+std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_canons_array, const Voice& leader, const int leader_length_ticks, const int ticks_per_measure, const int ticks_per_beat, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::vector<int>& key_signature, const Key& key, const bool minor_key, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest) {
 	std::vector<Canon> valid_canons_for_current_voice{};
+
+	// Maximum h_shift increment because tick sizes are unpredictable for some reason
+	const int h_shift_increment{ std::max(1, ticks_per_beat / settings::h_shift_increments_per_beat) }; // DO THIS ONCE AND DONT LOOP
 	
 	for (Canon& template_canon : template_canons_array) {
 
 #ifndef SINGLE_SHIFT_CHECK
-		for (int h_shift{ template_canon.get_max_h_shift() + 1}; h_shift < leader_length_ticks * settings::h_shift_limit; ++h_shift) {
+		for (int h_shift{ template_canon.get_max_h_shift() + h_shift_increment }; h_shift < leader_length_ticks * settings::h_shift_limit; h_shift += h_shift_increment) {
+			// settings::leader_length_ticks
 
-			// Maximum h_shift increment because tick sizes are unpredictable for some reason
-			if (h_shift % (ticks_per_beat / settings::h_shift_increments_per_beat) != 0) {
-				continue;
-			}
-
-			for (int v_shift{ -1 }; v_shift >= -6; --v_shift) {
+			for (int v_shift{ 0 }; v_shift >= -6; --v_shift) {
 #endif // SINGLE_SHIFT_CHECK
 
 #ifdef SINGLE_SHIFT_CHECK
-				const int v_shift{ 0 };
-				const int h_shift{ 4 };
+				const int v_shift{ -1 };
+				const int h_shift{ 12 };
 				if (h_shift > leader_length_ticks) {
 					std::cout << "h_shift is too large\n";
 				}
 #endif // SINGLE_SHIFT_CHECK
 
 				// Create follower (LOOP THIS)
-				const double max_h_shift_proportion{ static_cast<double>(h_shift) / leader_length_ticks };
+				// TEMPORARY
+				const double max_h_shift_proportion{ static_cast<double>(h_shift) / leader_length_ticks }; // settings::leader_length_ticks
 				Canon canon{ template_canon.texture(), h_shift, max_h_shift_proportion };
-				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, leading_tone, minor_key, ticks_per_measure, time_signature) }; // const
+				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, key, minor_key, ticks_per_measure, time_signature) }; // const
 				canon.add_voice(follower);
 
 				// Append empty measures to leader so both voices have the same number of complete measures
@@ -432,7 +471,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 				}
 
 				// Check counterpoint
-				check_counterpoint(canon, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat);
+				check_counterpoint(canon, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat);
 				// This will change member variables in canon
 
 #ifdef SINGLE_SHIFT_CHECK
@@ -449,7 +488,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 					//valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift, max_h_shift_proportion });
 				}
 				else {
-					valid_canons_for_current_voice.emplace_back(Canon{ canon.texture(), h_shift, max_h_shift_proportion });
+					valid_canons_for_current_voice.emplace_back(canon);
 #ifdef DEBUG
 					//std::cout << "Valid canon! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
@@ -470,7 +509,7 @@ int main() {
 		const Voice leader{ create_voice_array(score) };
 
 		// Key signature
-		const int fifths{ score.parts.at(0).measures.at(0).keys.at(0).fifths };
+		const int fifths{ (score.parts.at(0).measures.at(0).keys.size() > 0) ? score.parts.at(0).measures.at(0).keys.at(0).fifths : 0 };
 		const bool minor_key{ settings::minor_key };
 		const std::vector<int> key_signature{ alters_by_key(fifths) };
 
@@ -481,6 +520,7 @@ int main() {
 		const ScaleDegree dominant{ static_cast<mx::api::Step>(dominant_step), alters_by_key(fifths).at(dominant_step) + 1 };
 		const int leading_tone_step{ (tonic_step + 6) % 7 };
 		const ScaleDegree leading_tone{ static_cast<mx::api::Step>(leading_tone_step), alters_by_key(fifths).at(leading_tone_step) + 1 };
+		const Key key{ tonic, dominant, leading_tone };
 
 		// Get time signature
 		const mx::api::TimeSignatureData& time_signature{ score.parts.at(0).measures.at(0).timeSignature };
@@ -489,10 +529,32 @@ int main() {
 		const mx::api::NoteData& last_note{ score.parts.at(0).measures.at(0).staves.at(0).voices.at(0).notes.back() }; // Use original score, before horizontal shifting
 		const int ticks_per_measure{ last_note.tickTimePosition + last_note.durationData.durationTimeTicks };
 		const int leader_length_measures{ static_cast<int>(score.parts.at(0).measures.size()) };
-		const int leader_length_ticks{ ticks_per_measure * leader_length_measures };
+		//const int leader_length_ticks{ ticks_per_measure * leader_length_measures };
 		const mx::api::NoteData measure_long_rest{ create_rest(ticks_per_measure, ticks_per_measure, time_signature) };
 		const mx::api::MeasureData empty_measure{ create_measure(measure_long_rest, score.parts.at(0).measures.back()) };
 		const mx::api::BarlineData double_barline{ create_barline() };
+
+		// Get leader length
+		int leader_start_index{ 0 };
+		for (int i{ 0 }; i < leader.size(); ++i) {
+			if (leader.at(i).isRest) {
+				leader_start_index += leader.at(i).durationData.durationTimeTicks;
+			}
+			else {
+				break;
+			}
+		}
+
+		int leader_end_index{ ticks_per_measure * leader_length_measures };
+		for (std::size_t i{ leader.size() - 1 }; leader_end_index >= 0; --i) {
+			if (leader.at(i).isRest) {
+				leader_end_index -= leader.at(i).durationData.durationTimeTicks;
+			}
+			else {
+				break;
+			}
+		}
+		const int leader_length_ticks{ leader_end_index - leader_start_index };
 
 		// Generate rhythmic hierarchy
 		const std::vector<int> rhythmic_hierarchy_array{ create_rhythmic_hierarchy_array(ticks_per_measure, time_signature) };
@@ -506,7 +568,7 @@ int main() {
 		std::vector<Canon> template_canons_array{ Canon{std::vector<Voice>{leader}, 0, 0 } };
 
 		for (int i{ 0 }; i < settings::max_voices - 1; ++i) {
-			const std::vector<Canon> valid_canons_for_current_voice{ generate_canons_for_new_voice(template_canons_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, tonic, dominant, leading_tone, minor_key, time_signature, measure_long_rest) };
+			const std::vector<Canon> valid_canons_for_current_voice{ generate_canons_for_new_voice(template_canons_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, key, minor_key, time_signature, measure_long_rest) };
 			template_canons_array = valid_canons_for_current_voice;
 
 			valid_canons.reserve(valid_canons.size() + valid_canons_for_current_voice.size());
@@ -560,8 +622,8 @@ int main() {
 			}
 
 			// FIGURE OUT HOW TO GET WARNINGS COUNT FOR EACH
-			//// Add text labels
-			//parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(canon.get_warning_count()));
+			// Add text labels
+			parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(canon));
 
 			// Push parts in canon into final valid_canons_parts_sequence
 			for (int part{ 0 }; part < settings::max_voices; ++part) {
@@ -578,6 +640,12 @@ int main() {
 
 		// Remove extra time signatures and clefs
 		for (mx::api::PartData& part : valid_canons_parts_sequence) {
+			// Make an empty measure for summary label
+			part.measures.insert(part.measures.begin(), empty_measure);
+			part.measures.at(0).timeSignature = part.measures.at(1).timeSignature;
+			part.measures.at(0).keys = part.measures.at(1).keys;
+			part.measures.at(0).barlines.emplace_back(double_barline);
+
 			for (int i{ 1 }; i < part.measures.size(); ++i) {
 				// Start at second measure
 				mx::api::MeasureData& measure{ part.measures.at(i) };
@@ -589,17 +657,7 @@ int main() {
 			}
 		}
 
-		std::vector<mx::api::DirectionData>& directions{ valid_canons_parts_sequence.at(0).measures.at(0).staves.at(0).directions };
-		directions.emplace_back(mx::api::DirectionData{});
-		directions.back().words.emplace_back(mx::api::WordsData{});
-		directions.back().words.back().text = std::to_string(valid_canons_counter) + " valid canons\n";
-
-		const mx::api::ScoreData output_score{ create_output_score(score, valid_canons_parts_sequence) }; // add follower(s) to original score
-
-		//// Write file
-		write_file(output_score, settings::write_file_path); // output_score
-
-		std::cout << valid_canons_counter << " valid canons\n";
+		// Summary label
 		double warnings_sum{};
 		double h_shift_sum{};
 		double invertibility_sum{};
@@ -608,17 +666,30 @@ int main() {
 		for (Canon& canon : valid_canons) {
 			warnings_sum += canon.get_warning_count();
 			h_shift_sum += canon.get_max_h_shift();
-			invertibility_sum += (1 - canon.get_non_invertible_voice_pairs_proportion());
-			outer_voice_pairs_sum += (1 - canon.get_invalid_outer_voice_pairs_proportion());
+			invertibility_sum += canon.get_non_invertible_voice_pairs_proportion();
+			outer_voice_pairs_sum += canon.get_invalid_outer_voice_pairs_proportion();
 			quality_scores_sum += canon.get_quality_score();
 		}
-		std::cout << "Max voice count: " << max_voice_count << '\n';
-		std::cout << "Average warnings count: " << warnings_sum / valid_canons_counter << '\n';
-		std::cout << "Average h_shift: " << h_shift_sum / valid_canons_counter << '\n';
-		std::cout << "Average invertibility: " << invertibility_sum / valid_canons_counter << '\n';
-		std::cout << "Average valid outer voice pairs proportion: " << outer_voice_pairs_sum / valid_canons_counter << '\n';
-		std::cout << "Average quality score: " << quality_scores_sum / valid_canons_counter << '\n';
-		std::cout << "Total score: " << valid_canons_counter + quality_scores_sum << '\n';
+
+		mx::api::WordsData words{};
+		words.text += (std::to_string(valid_canons_counter) + " valid canons\n");
+		words.text += ("Max voice count: " + std::to_string(max_voice_count) + '\n');
+		words.text += ("Average warnings count: " + std::to_string(warnings_sum / valid_canons_counter) + '\n');
+		words.text += ("Average horizontal shift: " + std::to_string(h_shift_sum / valid_canons_counter / leader_length_ticks) + '\n');
+		words.text += ("Average invertibility: " + std::to_string(1 - (invertibility_sum / valid_canons_counter)) + '\n');
+		words.text += ("Average valid outer voice pairs proportion: " + std::to_string(1 - (outer_voice_pairs_sum / valid_canons_counter)) + '\n');
+
+		//
+		std::cout << words.text;
+
+		std::vector<mx::api::DirectionData>& directions{ valid_canons_parts_sequence.at(0).measures.at(0).staves.at(0).directions };
+		directions.emplace_back(mx::api::DirectionData{});
+		directions.back().words.emplace_back(words);
+
+		const mx::api::ScoreData output_score{ create_output_score(score, valid_canons_parts_sequence) }; // add follower(s) to original score
+
+		//// Write file
+		write_file(output_score, settings::write_file_path); // output_score
 	}
 	catch (const Exception& exception) {
 		std::cout << exception.getError();

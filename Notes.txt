@@ -1,20 +1,28 @@
+
+set(CMAKE_BUILD_TYPE Release)
+
 INPUT CHECKS
 - Each measure must have the same key signature
 
 RANDOM NOTES
+- if SINGLE_SHIFT_CHECK, all canons will be marked as avalid
+- leading empty measures will get deleted and there will be no key signature
 - when calculating number of valid bass voices, subtract the number of non invertible voice pairs
 - slowest part seems to be generating the xml/part data
 
 TODO
+- global variables (tonic, beats per msr, etc)
+- ui
+- static variables/functions? "Because these are part of a struct (not a namespace), make them static so they are only instantiated once (not with each object)."
+- FIX CONSECUTIVE SONORITIES OF THE SAME INTERVAL THING
 - consonant fourths
-- simultaneous dissonances
 
 - delete empty voices (e.g. if max_voices = 3 but only 2-part canons found)
 - "versatility" score
 - enums for interval names
 - augmented & diminished intervals are dissonant
 - make message a class so it can take an optional number of parameters
-- consecutive octaves w consonant suspensions between them is acceptable https://www.youtube.com/watch?v=g-4dw1T3v30 3:26
+- (THIS ONE IS STRANGE MAYBE DELETE. RESULTS IN 7 VOICE 699 CANONS) consecutive octaves w consonant suspensions between them is acceptable https://www.youtube.com/watch?v=g-4dw1T3v30 3:26
 - use texture objects instead of multiple parallel arrays
 
 7-8 in lower voices are an error

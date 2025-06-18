@@ -63,8 +63,9 @@ const mx::api::ScoreData get_score_object(const std::string& xml) {
 
     auto& score_measures { score.parts.at(0).measures };
 
-
     // delete empty starting measures
+    auto time_signature{ score_measures.at(0).timeSignature };
+    auto key_signature{ score_measures.at(0).keys };
     while (score_measures.size() > 0) {
         if (is_measure_empty(score_measures.at(0).staves.at(0).voices.at(0))) {
             score_measures.erase(score_measures.begin());
@@ -73,6 +74,8 @@ const mx::api::ScoreData get_score_object(const std::string& xml) {
             break;
         }
     }
+    score_measures.at(0).timeSignature = time_signature;
+    score_measures.at(0).keys = key_signature;
 
     // delete empty trailing measures
     while (score_measures.size() > 0) {

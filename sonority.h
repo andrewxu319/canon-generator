@@ -23,6 +23,7 @@ public:
 		= std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 6}, std::vector<int>{} }) const;
 	void build_motion_data(Sonority& next_sonority);
 	const MotionType get_motion_type() const;
+	const int get_num_rests() const;
 
 	const int get_index() const {
 		return m_index;

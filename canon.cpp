@@ -18,18 +18,12 @@ void print_messages(Canon& canon) {
 }
 
 void print_results(Canon& canon) {
-	if ((canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings::warning_threshold) ? "valid\n" : "invalid\n") {
+	if (canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings::warning_threshold) {
 		// Summary
 		std::cout << "\n\n";
 		//std::cout << "Canon is " << ((canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings::warning_threshold) ? "valid\n" : "invalid\n");
 
 		if (canon.error_message_box().size() == 0) {
-			std::cout << "Warning count: " << canon.warning_message_box().size() << '\n';
-			std::cout << "Voice count: " << canon.get_voice_count() << '\n';
-			std::cout << "Max horizontal shift: " << canon.get_max_h_shift_proportion() << '\n';
-			std::cout << "Invertibility proportion: " << 1 - canon.get_non_invertible_voice_pairs_proportion() << '\n';
-			std::cout << "Valid outer voice pairs proportion: " << 1 - canon.get_invalid_outer_voice_pairs_proportion() << '\n';
-			std::cout << "Quality score: " << canon.get_quality_score() << '\n';
 			std::cout << '\n';
 
 			std::cout << "Invalid voice pairs:";
@@ -57,5 +51,8 @@ void print_results(Canon& canon) {
 			std::cout << '\n';
 		}
 		std::cout << "\n---------------------------------\n\n";
+	}
+	else {
+		std::cout << "Invalid\n";
 	}
 }

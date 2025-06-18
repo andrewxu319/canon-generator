@@ -130,7 +130,7 @@ const bool are_upbeat_parallels_legal(const SonorityArray& sonority_array, const
 	return false;
 }
 
-void check_voice_independence(const SonorityArray& sonority_array, std::vector<int> index_array, const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const int ticks_per_measure, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::size_t voice_count, const ScaleDegree& leading_tone) {
+void check_voice_independence(const SonorityArray& sonority_array, std::vector<int> index_array, const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const int ticks_per_measure, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::size_t voice_count, const Key& key) {
 	for (int i{ 0 }; i < index_array.size() - 1; ++i) { // Subtract 1 because we don't want to check the last sonority
 		const Sonority& current_sonority{ sonority_array.at(index_array.at(i)) };
 		const Sonority& next_sonority{ (sonority_array).at(index_array.at(i + 1)) };
@@ -138,31 +138,16 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		if (current_sonority.get_note_1().isRest ||
 			current_sonority.get_note_2().isRest ||
 			next_sonority.get_note_1().isRest ||
-			next_sonority.get_note_2().isRest)
+			next_sonority.get_note_2().isRest ||
+			(current_sonority.get_note_1().pitchData.step == next_sonority.get_note_1().pitchData.step
+				&& current_sonority.get_note_1().pitchData.alter == next_sonority.get_note_1().pitchData.alter)
+			|| (current_sonority.get_note_2().pitchData.step == next_sonority.get_note_2().pitchData.step
+				&& current_sonority.get_note_2().pitchData.alter == next_sonority.get_note_2().pitchData.alter))
+			// If either voice doesn't move or moves by octaves
 		{
 			continue;
 		}
 
-
-		// Avoid doubled leading tone
-		if ((current_sonority.get_note_1().pitchData.step == leading_tone.step && current_sonority.get_note_1().pitchData.alter == leading_tone.alter)
-			&& (current_sonority.get_note_2().pitchData.step == leading_tone.step && current_sonority.get_note_2().pitchData.alter == leading_tone.alter))
-		{
-#ifdef DEBUG
-			std::cout << "Doubled leading tone";
-#endif // DEBUG
-			send_warning_message(Message{ current_sonority.get_index(), current_sonority.get_index() }, warning_message_box, error_message_box);
-		}
-
-		// Avoid following a perfect consonance with another one.
-		if ((current_sonority.get_simple_interval().second == 7 || current_sonority.get_simple_interval().second == 0)
-			&& (next_sonority.get_simple_interval().second == 7 || next_sonority.get_simple_interval().second == 0))
-		{
-#ifdef DEBUG
-			std::cout << "Consecutive perfect consonances";
-#endif // DEBUG
-			send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
-		}
 
 		// Avoid similar motion from a 2nd to a 3rd
 		// Remove? Warning?
@@ -175,7 +160,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 			// Inverted---7th to 6th
 		{
 #ifdef DEBUG
-			std::cout << "Similar motion from a 2nd to a 3rd";
+			std::cout << "Similar motion from a 2nd to a 3rd\n";
 #endif // DEBUG
 			send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
 		}
@@ -192,13 +177,13 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 				if (voice_count > 2) {
 					// Allowed in 3+ parts
 #ifdef DEBUG
-					std::cout << "Parallel intervals for 4 or more notes (might continue beyond indicated final note)";
+					std::cout << "Parallel intervals for 4 or more notes (might continue beyond indicated final note)\n";
 #endif // DEBUG
 					send_warning_message(Message{ current_sonority.get_index(), sonority_array.at(index_array.at(i + 2)).get_index() }, warning_message_box, error_message_box);
 				}
 				else {
 #ifdef DEBUG
-					std::cout << "Parallel intervals for 4 or more notes (might continue beyond indicated final note)";
+					std::cout << "Parallel intervals for 4 or more notes (might continue beyond indicated final note)\n";
 #endif // DEBUG
 					send_error_message(Message{ current_sonority.get_index(), sonority_array.at(index_array.at(i + 2)).get_index() }, error_message_box);
 #ifndef DEBUG
@@ -206,6 +191,17 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 #endif
 				}
 			}
+/*
+		{
+#ifdef DEBUG
+			std::cout << "Parallel intervals for 4 or more notes (might continue beyond indicated final note)"\n;
+#endif // DEBUG
+			send_warning_message(Message{ current_sonority.get_index(), sonority_array.at(index_array.at(i + 2)).get_index() }, warning_message_box, error_message_box);
+#ifndef DEBUG
+			return;
+#endif
+		}
+*/
 		}
 		catch (...) {}
 
@@ -216,7 +212,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 			for (int voice{ 0 }; voice < 2; ++voice) {
 				const int other_voice{ (voice == 0) ? 1 : 0 };
 
-				for (int j{ index_array.at(i) }; j < index_array.at(i + 1) - 1; ++j)
+				for (int j{ index_array.at(i) + 1 }; j < index_array.at(i + 1) - 1; ++j)
 					// For each intervening note
 				{
 					if ((std::abs(sonority_array.at(j).get_note_motion(voice).first) > 2)
@@ -239,7 +235,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		// Avoid parallel fifths and octaves between adjacent notes.
 		if (current_sonority.get_simple_interval().second == 7 && next_sonority.get_simple_interval().second == 7) {
 #ifdef DEBUG
-			std::cout << "Parallel fifths between adjacent notes or downbeats";
+			std::cout << "Parallel fifths between adjacent notes or downbeats\n";
 #endif // DEBUG
 			send_error_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
 #ifndef DEBUG
@@ -248,7 +244,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 		} else
 		if (current_sonority.get_simple_interval().first == 0 && next_sonority.get_simple_interval().first == 0) {
 #ifdef DEBUG
-			std::cout << "Parallel octaves between adjacent notes or downbeats";
+			std::cout << "Parallel octaves between adjacent notes or downbeats\n";
 #endif // DEBUG
 			send_error_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
 #ifndef DEBUG
@@ -278,7 +274,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 
 					if (current_sonority.get_simple_interval().second == 7 && downbeat.get_simple_interval().second == 7) {
 #ifdef DEBUG
-						std::cout << "Parallel fifths between weak beat and downbeat";
+						std::cout << "Parallel fifths between weak beat and downbeat\n";
 #endif // DEBUG
 						send_error_message(Message{ current_sonority.get_index(), downbeat.get_index() }, error_message_box);
 #ifndef DEBUG
@@ -289,7 +285,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 					else
 						if (current_sonority.get_simple_interval().first == 0 && downbeat.get_simple_interval().first == 0) {
 #ifdef DEBUG
-							std::cout << "Parallel octaves between weak beat and downbeat";
+							std::cout << "Parallel octaves between weak beat and downbeat\n";
 #endif // DEBUG
 							send_error_message(Message{ current_sonority.get_index(), downbeat.get_index() }, error_message_box);
 #ifndef DEBUG
@@ -319,7 +315,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 				if (current_sonority.get_simple_interval().second == 7 && next_upbeat.get_simple_interval().second == 7) {
 					if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j, dissonant_intervals)) {
 #ifdef DEBUG
-						std::cout << "Parallel fifths between consecutive upbeats";
+						std::cout << "Parallel fifths between consecutive upbeats\n";
 #endif // DEBUG
 						send_error_message(Message{ current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
 #ifndef DEBUG
@@ -331,7 +327,7 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 					if (current_sonority.get_simple_interval().first == 0 && next_upbeat.get_simple_interval().first == 0) {
 						if (!are_upbeat_parallels_legal(sonority_array, index_array, current_sonority, i, j, dissonant_intervals)) {
 #ifdef DEBUG
-							std::cout << "Parallel octaves between consecutive upbeats";
+							std::cout << "Parallel octaves between consecutive upbeats\n";
 #endif // DEBUG
 							send_error_message(Message{ current_sonority.get_index(), next_upbeat.get_index() }, error_message_box);
 #ifndef DEBUG
@@ -341,6 +337,26 @@ void check_voice_independence(const SonorityArray& sonority_array, std::vector<i
 					}
 				break;
 			}
+		}
+
+		// Avoid following a perfect consonance with another one.
+		if ((current_sonority.get_simple_interval().second == 7 || current_sonority.get_simple_interval().second == 0)
+			&& (next_sonority.get_simple_interval().second == 7 || next_sonority.get_simple_interval().second == 0))
+		{
+#ifdef DEBUG
+			std::cout << "Consecutive perfect consonances\n";
+#endif // DEBUG
+			send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
+		}
+
+		// Avoid doubled leading tone
+		if ((current_sonority.get_note_1().pitchData.step == key.leading_tone.step && current_sonority.get_note_1().pitchData.alter == key.leading_tone.alter)
+			&& (current_sonority.get_note_2().pitchData.step == key.leading_tone.step && current_sonority.get_note_2().pitchData.alter == key.leading_tone.alter))
+		{
+#ifdef DEBUG
+			std::cout << "Doubled leading tone\n";
+#endif // DEBUG
+			send_warning_message(Message{ current_sonority.get_index(), current_sonority.get_index() }, warning_message_box, error_message_box);
 		}
 	}
 }
@@ -356,7 +372,7 @@ const int max_rhythmic_hierarchy(const int first_note_start_sonority_index, cons
 	return max;
 }
 
-void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<bool>& allowed_dissonances, const int ticks_per_measure, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const std::vector<int>& rhythmic_hierarchy_array, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box) {
+void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<bool>& allowed_dissonances, const int ticks_per_measure, const Key& key, const std::vector<int>& rhythmic_hierarchy_array, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box) {
 	// Decide whether to pass these directly
 	const Sonority& current_sonority{ sonority_array.at(i) };
 	const Sonority& next_sonority{ sonority_array.at(i + 1) };
@@ -369,9 +385,9 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 
 			if ((pedal_end - pedal_start >= 6)
 				// A pedal will be defined as a note that lasts (or repeats) through more than six pitch changes in other voices. Really it would be better to define it as a tone that is held through two or more changes of harmony, but for technical reasons we'll make this arbitrary definition.
-				&& ((sonority_array.at(pedal_start).get_note(voice).pitchData.step == tonic.step)
+				&& ((sonority_array.at(pedal_start).get_note(voice).pitchData.step == key.tonic.step)
 					// Pedal can be tonic
-					|| (sonority_array.at(pedal_start).get_note(voice).pitchData.step == dominant.step))
+					|| (sonority_array.at(pedal_start).get_note(voice).pitchData.step == key.dominant.step))
 				// Or dominant
 				&& (!sonority_array.at(pedal_start).is_sonority_dissonant(dissonant_intervals) && !sonority_array.at(pedal_end).is_sonority_dissonant(dissonant_intervals))
 				// Start and end must be consonant
@@ -393,15 +409,19 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 		// Allow 2 successive dissonances if they are quick and stepwise.
 		// Here we define "quick" as there are no other voices moving faster
 		try {
+			const int other_voice{ (voice == 0) ? 1 : 0 };
 			if ((!sonority_array.at(i - 1).is_sonority_dissonant(dissonant_intervals))
 				// Note 1 must be consonant
 				&& (!sonority_array.at(i + 2).is_sonority_dissonant(dissonant_intervals))
 				// Note 4 must be consonant
 				)
 			{
-				if ((sonority_array.at(i - 1).get_note_motion(voice).first == 1 && current_sonority.get_note_motion(voice).first == 1 && next_sonority.get_note_motion(voice).first == 1) ||
+				if (((sonority_array.at(i - 1).get_note_motion(voice).first == 1 && current_sonority.get_note_motion(voice).first == 1 && next_sonority.get_note_motion(voice).first == 1) ||
 					(sonority_array.at(i - 1).get_note_motion(voice).first == -1 && current_sonority.get_note_motion(voice).first == -1 && next_sonority.get_note_motion(voice).first == -1))
 					// All notes must move stepwise in the same direction
+					&& sonority_array.at(i - 1).get_note_motion(other_voice).second == 0 && current_sonority.get_note_motion(other_voice).second
+					// Other voice is stationary
+					)
 				{
 #ifdef DEBUG
 					std::cout << "double passing tones\n";
@@ -517,6 +537,7 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 	for (int voice{ 0 }; voice < 2; ++voice) {
 		// PASSING & NEIGHBOR NOTE
 		try {
+			const int other_voice{ (voice == 0) ? 1 : 0 };
 			if ((!next_sonority.is_sonority_dissonant(dissonant_intervals))
 				// Resolve dissonance immediately by step. (Resolution is always the next sonority)
 				&& (std::abs(sonority_array.at(i - 1).get_note_motion(voice).first) == 1)
@@ -525,6 +546,9 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 				// If resolves by step
 				&& (!sonority_array.at(i - 1).is_sonority_dissonant(dissonant_intervals))
 				// If preparation is consonant
+				&& (sonority_array.at(i - 1).get_note_motion(other_voice).second == 0)
+				&& (current_sonority.get_note_motion(other_voice).second == 0)
+				// Other voice stays stationary
 				)
 			{
 #ifdef DEBUG
@@ -554,14 +578,14 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 					}
 
 					// LEGAL RETARDATION
-					if (current_sonority.get_note(voice).pitchData.step == leading_tone.step && current_sonority.get_note(voice).pitchData.alter == leading_tone.alter
-						&& resolution.get_note(voice).pitchData.step == tonic.step && resolution.get_note(voice).pitchData.alter == tonic.alter) {
-						// If retardation resolves from leading tone to tonic
+					if (current_sonority.get_note(voice).pitchData.step == key.leading_tone.step && current_sonority.get_note(voice).pitchData.alter == key.leading_tone.alter
+						&& resolution.get_note(voice).pitchData.step == key.tonic.step && resolution.get_note(voice).pitchData.alter == key.tonic.alter) {
+						// If retardation resolves from leading tone to key.tonic
 
 						if (resolution.get_simple_interval().first == 0) {
 							// Can't really resolve to a perfect 5th since other voice can't move
 #ifdef DEBUG
-							std::cout << "Retardation resolution is doubled!";
+							std::cout << "Retardation resolution is doubled!\n";
 #endif // DEBUG
 							send_warning_message(Message{ current_sonority.get_index(), resolution.get_index() }, warning_message_box, error_message_box);
 						}
@@ -594,13 +618,13 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 							// Prohibit 7-8 suspensions
 						{
 #ifdef DEBUG
-							std::cout << "7-8 suspension";
+							std::cout << "7-8 suspension\n";
 #endif // DEBUG
 							send_error_message(Message{ current_sonority.get_index(), resolution.get_index() }, error_message_box);
 						}
 						else if (resolution.get_simple_interval().first == 0 || resolution.get_simple_interval().second == 7) {
 #ifdef DEBUG
-							std::cout << "Suspension resolves to perfect consonance";
+							std::cout << "Suspension resolves to perfect consonance\n";
 #endif // DEBUG
 							send_warning_message(Message{ current_sonority.get_index(), resolution.get_index() }, warning_message_box, error_message_box);
 						}
@@ -648,14 +672,14 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 								)
 							{
 #ifdef DEBUG
-								std::cout << "7-8 appogiatura";
+								std::cout << "7-8 appogiatura\n";
 #endif // DEBUG
 								send_error_message(Message{ current_sonority.get_index(), resolution.get_index() }, error_message_box);
 							}
 							else {
 								// Can't really resolve to a perfect 5th since other voice can't move
 #ifdef DEBUG
-								std::cout << "Appogiatura resolution is doubled!";
+								std::cout << "Appogiatura resolution is doubled!\n";
 #endif // DEBUG
 								send_warning_message(Message{ current_sonority.get_index(), resolution.get_index() }, warning_message_box, error_message_box);
 							}
@@ -739,6 +763,8 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 				// Preparation must be on weak beat / upbeat
 				&& (sonority_array.at(i - 1).get_note_motion(voice).second * current_sonority.get_note_motion(voice).second < 0)
 				// Must resolve in opposite direction
+				&& (sonority_array.at(preparation_end).get_motion_type() == oblique)
+				// Other voice cannot move
 				) {
 #ifdef DEBUG
 				std::cout << "escape tone\n";
@@ -753,7 +779,7 @@ void is_dissonance_allowed(const SonorityArray& sonority_array, const int i, con
 	// If no rule explicitly says it's legal, use whatever value is already stored
 }
 
-void check_dissonance_handling(const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, const SonorityArray& sonority_array, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, std::vector<bool>& is_tick_dissonance_start, const bool write_to_is_tick_dissonance_start, const int ticks_per_measure, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const std::vector<int>& rhythmic_hierarchy_array) {
+void check_dissonance_handling(const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, const SonorityArray& sonority_array, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, std::vector<bool>& is_tick_dissonance_start, const bool write_to_is_tick_dissonance_start, const int ticks_per_measure, const Key& key, const std::vector<int>& rhythmic_hierarchy_array) {
 	// TODO: last sonority cannot be dissonant
 
 	std::vector<bool> allowed_dissonances(sonority_array.size());
@@ -766,13 +792,18 @@ void check_dissonance_handling(const std::pair<std::vector<int>, std::vector<int
 
 		if (current_sonority.is_sonority_dissonant(dissonant_intervals)) {
 			const int current_sonority_index{ current_sonority.get_index() };
-			/*if (is_tick_dissonance_start.at(current_sonority_index)) {
-				send_error_message(Message{ "Simultaneous dissonances", current_sonority_index, current_sonority_index }, error_message_box);
-			}*/
+			if (is_tick_dissonance_start.at(current_sonority_index)) {
+				// Simultaneous dissonances
+				send_error_message(Message{ current_sonority_index, current_sonority_index }, error_message_box);
+#ifndef DEBUG
+				return;
+#endif // !DEBUG
+
+			}
 			if (write_to_is_tick_dissonance_start) {
 				is_tick_dissonance_start.at(current_sonority_index) = true;
 			}
-			is_dissonance_allowed(sonority_array, i, dissonant_intervals, allowed_dissonances, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, error_message_box, warning_message_box);
+			is_dissonance_allowed(sonority_array, i, dissonant_intervals, allowed_dissonances, ticks_per_measure, key, rhythmic_hierarchy_array, error_message_box, warning_message_box);
 				// If not allowed, is_dissonance_allowed will mark it as so
 		}
 		else {
@@ -794,7 +825,7 @@ void check_dissonance_handling(const std::pair<std::vector<int>, std::vector<int
 	for (int i{ 0 }; i < allowed_dissonances.size(); ++i) {
 		if (allowed_dissonances.at(i) == false) {
 #ifdef DEBUG
-			std::cout << "Illegal dissonance";
+			std::cout << "Illegal dissonance\n";
 #endif // DEBUG
 			send_error_message(Message{ sonority_array.at(i).get_index(), sonority_array.at(i).get_index() }, error_message_box);
 			#ifndef DEBUG
@@ -804,13 +835,13 @@ void check_dissonance_handling(const std::pair<std::vector<int>, std::vector<int
 	}
 }
 
-void check_with_given_config(const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const std::vector<std::vector<int>>& index_arrays_for_sonority_arrays, const SonorityArray& stripped_sonority_array, std::vector<bool>& is_tick_dissonance_start, const bool write_to_is_tick_dissonance_start, const int ticks_per_measure, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::size_t voice_count) {
+void check_with_given_config(const std::pair<std::vector<int>, std::vector<int>>& dissonant_intervals, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box, const std::vector<std::vector<int>>& index_arrays_for_sonority_arrays, const SonorityArray& stripped_sonority_array, std::vector<bool>& is_tick_dissonance_start, const bool write_to_is_tick_dissonance_start, const int ticks_per_measure, const Key& key, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::size_t voice_count) {
 	for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
 		if (index_array.size() > 0) {
-			check_voice_independence(stripped_sonority_array, index_array, dissonant_intervals, error_message_box, warning_message_box, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count, leading_tone);
+			check_voice_independence(stripped_sonority_array, index_array, dissonant_intervals, error_message_box, warning_message_box, ticks_per_measure, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count, key);
 		}
 	}
-	check_dissonance_handling(dissonant_intervals, stripped_sonority_array, error_message_box, warning_message_box, is_tick_dissonance_start, write_to_is_tick_dissonance_start, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array); // Only check lowest level
+	check_dissonance_handling(dissonant_intervals, stripped_sonority_array, error_message_box, warning_message_box, is_tick_dissonance_start, write_to_is_tick_dissonance_start, ticks_per_measure, key, rhythmic_hierarchy_array); // Only check lowest level
 }
 
 void check_outer_voice(const SonorityArray& sonority_array, std::vector<int> index_array, const int outer_voice, std::vector<Message>& error_message_box, std::vector<Message>& warning_message_box) {
@@ -831,7 +862,7 @@ void check_outer_voice(const SonorityArray& sonority_array, std::vector<int> ind
 				// Allow if one voice is inner and exposed voice moves by step
 			{
 #ifdef DEBUG
-				std::cout << "Direct fifths or octaves between outer and inner voice";
+				std::cout << "Direct fifths or octaves between outer and inner voice\n";
 #endif // DEBUG
 				send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
 				// Error or warning?
@@ -849,7 +880,7 @@ void check_outer_voice(const SonorityArray& sonority_array, std::vector<int> ind
 			std::abs(current_sonority.get_note_2_motion().first) != 1) {
 			if (next_sonority.get_simple_interval().second == 7) {
 #ifdef DEBUG
-				std::cout << "Both voices leap to a perfect fifth";
+				std::cout << "Both voices leap to a perfect fifth\n";
 #endif // DEBUG
 				send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
 #ifndef DEBUG
@@ -859,7 +890,7 @@ void check_outer_voice(const SonorityArray& sonority_array, std::vector<int> ind
 		else
 			if (next_sonority.get_simple_interval().second == 0) {
 #ifdef DEBUG
-				std::cout << "Both voices leap to an octave";
+				std::cout << "Both voices leap to an octave\n";
 #endif // DEBUG
 				send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
 #ifndef DEBUG
@@ -895,13 +926,13 @@ void check_outer_voice_pair(const SonorityArray& sonority_array, std::vector<int
 						// Second interval is on downbeat
 						) {
 #ifdef DEBUG
-						std::cout << "Direct octaves between outer voices";
+						std::cout << "Direct octaves between outer voices\n";
 #endif // DEBUG
 						send_error_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
 					}
 					else {
 #ifdef DEBUG
-						std::cout << "Direct octaves between outer voices";
+						std::cout << "Direct octaves between outer voices\n";
 #endif // DEBUG
 						send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
 					}
@@ -924,13 +955,13 @@ void check_outer_voice_pair(const SonorityArray& sonority_array, std::vector<int
 						// Second interval is on downbeat
 						) {
 #ifdef DEBUG
-						std::cout << "Direct fifths between outer voices";
+						std::cout << "Direct fifths between outer voices\n";
 #endif // DEBUG
 						send_error_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, error_message_box);
 					}
 					else {
 #ifdef DEBUG
-						std::cout << "Direct fifths between outer voices";
+						std::cout << "Direct fifths between outer voices\n";
 #endif // DEBUG
 						send_warning_message(Message{ current_sonority.get_index(), next_sonority.get_index() }, warning_message_box, error_message_box);
 					}
@@ -945,11 +976,10 @@ void check_outer_voice_pair(const SonorityArray& sonority_array, std::vector<int
 	}
 }
 
-void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDegree& tonic, const ScaleDegree& dominant, const ScaleDegree& leading_tone, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat) {
+void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& key, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat) {
 	// NOTE: Only use higher rhythmic levels to check for PARALLELS
 	// This doesn't care about whether which voice is the bass. It assumes the composer can add another bass voice
 	// Return type is a pair of lists of error and warning messages
-
 	const std::size_t voice_count{ canon.texture().size() };
 
 	// For every voice, generate per-tick note data. MAKES COPIES
@@ -989,7 +1019,11 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 		SonorityArray stripped_sonority_array{};
 		stripped_sonority_array.emplace_back(raw_sonority_array.at(0)); // Always push the first
 		for (int i{ 1 }; i < raw_sonority_array.size(); ++i) {
-			if (!is_identical(raw_sonority_array.at(i - 1), raw_sonority_array.at(i))) {
+			const Sonority current_sonority{ raw_sonority_array.at(i) };
+			if (!is_identical(raw_sonority_array.at(i - 1), current_sonority)
+				&& current_sonority.get_num_rests() != 2
+				// Delete if two rests, or one rest and the other voice is stationary
+				) {
 				stripped_sonority_array.emplace_back(raw_sonority_array.at(i));
 			}
 		}
@@ -1039,12 +1073,12 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 
 		std::vector<Message> sa_21_error_message_box{};
 		std::vector<Message> sa_21_warning_message_box{};
-		check_with_given_config(default_dissonant_intervals, sa_21_error_message_box, sa_21_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_21, is_tick_dissonance_start, true, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
+		check_with_given_config(default_dissonant_intervals, sa_21_error_message_box, sa_21_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_21, is_tick_dissonance_start, true, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
 		const bool sa_21_valid{ sa_21_error_message_box.size() == 0 && sa_21_warning_message_box.size() <= settings::warning_threshold };
 
 		std::vector<Message> sa_12_error_message_box{};
 		std::vector<Message> sa_12_warning_message_box{};
-		check_with_given_config(default_dissonant_intervals, sa_12_error_message_box, sa_12_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_12, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
+		check_with_given_config(default_dissonant_intervals, sa_12_error_message_box, sa_12_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_12, is_tick_dissonance_start, false, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
 		// write_to_is_tick_dissonance_start is false this time because whether a note is dissonant doesn't depend on voice order here
 		const bool sa_12_valid{ sa_12_error_message_box.size() == 0 && sa_12_warning_message_box.size() <= settings::warning_threshold };
 
@@ -1068,6 +1102,10 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 		else {
 			// Doesn't matter which. One error disqualifies whole canon
 			canon.error_message_box() = sa_21_error_message_box;
+#ifdef DEBUG
+			std::cout << "Invalid\n";
+#endif // DEBUG
+
 			return;
 		}
 
@@ -1078,7 +1116,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 		// 2 as bass
 			std::vector<Message> sa_2b1_error_message_box{}; // 2-bass, 1
 			std::vector<Message> sa_2b1_warning_message_box{};
-			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_2b1_error_message_box, sa_2b1_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_21, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
+			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_2b1_error_message_box, sa_2b1_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_21, is_tick_dissonance_start, false, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
 			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
 				if (index_array.size() > 0) {
 					check_outer_voice(sonority_array_21, index_array, 1, sa_2b1_error_message_box, sa_2b1_warning_message_box);
@@ -1113,7 +1151,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const ScaleDe
 			// 1 as bass
 			std::vector<Message> sa_1b2_error_message_box{};
 			std::vector<Message> sa_1b2_warning_message_box{};
-			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_1b2_error_message_box, sa_1b2_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_12, is_tick_dissonance_start, false, ticks_per_measure, tonic, dominant, leading_tone, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
+			check_with_given_config(std::pair<std::vector<int>, std::vector<int>>{ std::vector<int>{1, 3, 6}, std::vector<int>{ 6 } }, sa_1b2_error_message_box, sa_1b2_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_12, is_tick_dissonance_start, false, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
 			for (std::vector<int> index_array : index_arrays_for_sonority_arrays) {
 				if (index_array.size() > 0) {
 					check_outer_voice(sonority_array_12, index_array, 0, sa_1b2_error_message_box, sa_1b2_warning_message_box);

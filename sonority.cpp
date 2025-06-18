@@ -39,6 +39,17 @@ const MotionType Sonority::get_motion_type() const {
 	}
 }
 
+const int Sonority::get_num_rests() const {
+	int rests{ 0 };
+	if (m_note_1.isRest) {
+		++rests;
+	}
+	if (m_note_2.isRest) {
+		++rests;
+	}
+	return rests;
+}
+
 const Interval get_interval(const mx::api::NoteData& note_1, const mx::api::NoteData& note_2, const bool number_signed) {
 	// <int, int>---<scale degree interval, semitone interval>
 	// If signed, note_2 higher = positive
@@ -100,7 +111,7 @@ const bool is_dissonant(const mx::api::NoteData& note_1, const mx::api::NoteData
 }
 
 const bool is_identical(const Sonority& sonority_1, const Sonority& sonority_2) {
-	const bool note_1_indexentical{ (sonority_1.get_note_1().pitchData == sonority_2.get_note_1().pitchData) && (sonority_1.get_note_1().isRest == sonority_2.get_note_1().isRest) };
-	const bool note_2_indexentical{ (sonority_1.get_note_2().pitchData == sonority_2.get_note_2().pitchData) && (sonority_1.get_note_2().isRest == sonority_2.get_note_2().isRest) };
-	return note_1_indexentical && note_2_indexentical;
+	const bool note_1_identical{ (sonority_1.get_note_1().pitchData == sonority_2.get_note_1().pitchData) && (sonority_1.get_note_1().isRest == sonority_2.get_note_1().isRest) };
+	const bool note_2_identical{ (sonority_1.get_note_2().pitchData == sonority_2.get_note_2().pitchData) && (sonority_1.get_note_2().isRest == sonority_2.get_note_2().isRest) };
+	return note_1_identical && note_2_identical;
 }
