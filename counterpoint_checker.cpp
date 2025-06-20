@@ -976,7 +976,7 @@ void check_outer_voice_pair(const SonorityArray& sonority_array, std::vector<int
 	}
 }
 
-void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& key, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat) {
+void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& key, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const Settings& settings) {
 	// NOTE: Only use higher rhythmic levels to check for PARALLELS
 	// This doesn't care about whether which voice is the bass. It assumes the composer can add another bass voice
 	// Return type is a pair of lists of error and warning messages
@@ -1074,13 +1074,13 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 		std::vector<Message> sa_21_error_message_box{};
 		std::vector<Message> sa_21_warning_message_box{};
 		check_with_given_config(default_dissonant_intervals, sa_21_error_message_box, sa_21_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_21, is_tick_dissonance_start, true, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
-		const bool sa_21_valid{ sa_21_error_message_box.size() == 0 && sa_21_warning_message_box.size() <= settings::warning_threshold };
+		const bool sa_21_valid{ sa_21_error_message_box.size() == 0 && sa_21_warning_message_box.size() <= settings.warning_threshold };
 
 		std::vector<Message> sa_12_error_message_box{};
 		std::vector<Message> sa_12_warning_message_box{};
 		check_with_given_config(default_dissonant_intervals, sa_12_error_message_box, sa_12_warning_message_box, index_arrays_for_sonority_arrays, sonority_array_12, is_tick_dissonance_start, false, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, voice_count);
 		// write_to_is_tick_dissonance_start is false this time because whether a note is dissonant doesn't depend on voice order here
-		const bool sa_12_valid{ sa_12_error_message_box.size() == 0 && sa_12_warning_message_box.size() <= settings::warning_threshold };
+		const bool sa_12_valid{ sa_12_error_message_box.size() == 0 && sa_12_warning_message_box.size() <= settings.warning_threshold };
 
 		if (sa_21_valid && sa_12_valid) {
 			// canon.error_message_box() is empty by default
@@ -1122,7 +1122,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 					check_outer_voice(sonority_array_21, index_array, 1, sa_2b1_error_message_box, sa_2b1_warning_message_box);
 				}
 			}
-			if (sa_2b1_error_message_box.size() > 0 || sa_2b1_warning_message_box.size() > settings::warning_threshold) {
+			if (sa_2b1_error_message_box.size() > 0 || sa_2b1_warning_message_box.size() > settings.warning_threshold) {
 				canon.add_invalid_bass_voice(1); // Voice 2 is index 1
 				sa_2b1_valid = false;
 			}
@@ -1135,7 +1135,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 					check_outer_voice(sonority_array_21, index_array, 0, sa_21t_error_message_box, sa_21t_warning_message_box);
 				}
 			}
-			if (sa_21t_error_message_box.size() > 0 || sa_21t_warning_message_box.size() > settings::warning_threshold) {
+			if (sa_21t_error_message_box.size() > 0 || sa_21t_warning_message_box.size() > settings.warning_threshold) {
 				canon.add_invalid_top_voice(0);
 				sa_21t_valid = false;
 			}
@@ -1157,7 +1157,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 					check_outer_voice(sonority_array_12, index_array, 0, sa_1b2_error_message_box, sa_1b2_warning_message_box);
 				}
 			}
-			if (sa_1b2_error_message_box.size() > 0 || sa_1b2_warning_message_box.size() > settings::warning_threshold) {
+			if (sa_1b2_error_message_box.size() > 0 || sa_1b2_warning_message_box.size() > settings.warning_threshold) {
 				canon.add_invalid_bass_voice(0);
 				sa_1b2_valid = false;
 			}
@@ -1170,7 +1170,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 					check_outer_voice(sonority_array_12, index_array, 1, sa_12t_error_message_box, sa_12t_warning_message_box);
 				}
 			}
-			if (sa_12t_error_message_box.size() > 0 || sa_12t_warning_message_box.size() > settings::warning_threshold) {
+			if (sa_12t_error_message_box.size() > 0 || sa_12t_warning_message_box.size() > settings.warning_threshold) {
 				canon.add_invalid_top_voice(1);
 				sa_12t_valid = false;
 			}
@@ -1193,7 +1193,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 					check_outer_voice_pair(sonority_array_21, index_array, sa_2o1o_error_message_box, sa_2o1o_warning_message_box, voice_count);
 				}
 			}
-			if (sa_2o1o_error_message_box.size() > 0 || sa_2o1o_warning_message_box.size() > settings::warning_threshold) {
+			if (sa_2o1o_error_message_box.size() > 0 || sa_2o1o_warning_message_box.size() > settings.warning_threshold) {
 				canon.add_invalid_outer_voice_pair(std::pair<int, int>{ voice_pair.second, voice_pair.first });
 			}
 		//}
@@ -1211,7 +1211,7 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 				}
 			}
 
-			if (sa_1o2o_error_message_box.size() > 0 || sa_1o2o_warning_message_box.size() > settings::warning_threshold) {
+			if (sa_1o2o_error_message_box.size() > 0 || sa_1o2o_warning_message_box.size() > settings.warning_threshold) {
 				canon.add_invalid_outer_voice_pair(voice_pair);
 			}
 		//}
@@ -1219,6 +1219,6 @@ void check_counterpoint(Canon& canon, const int ticks_per_measure, const Key& ke
 #ifdef DEBUG
 			//print_messages(canon);
 #endif // DEBUG
-			//print_results(canon);
+			//print_results(canon, settings);
 	}
 }

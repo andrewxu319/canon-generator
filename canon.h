@@ -141,13 +141,14 @@ public:
 	}
 
 	const double get_quality_score() {
-		m_quality_score = 
-			- static_cast<int>(m_warning_message_box.size()) * settings::warnings_count_weight
-			//+ (m_voice_count - 2) * settings::voice_count_weight
-			- (settings::tightness_weight / settings::h_shift_limit) * m_max_h_shift_proportion + 0.5 * settings::tightness_weight // Add half of tightness_weight to center it on 0
-			- m_non_invertible_voice_pairs_proportion * settings::invertibility_weight
-			- m_invalid_outer_voice_pairs_proportion * settings::outer_voice_weight;
-		return m_quality_score;
+		return 0;
+		//m_quality_score = 
+		//	- static_cast<int>(m_warning_message_box.size()) * settings::warnings_count_weight
+		//	//+ (m_voice_count - 2) * settings::voice_count_weight
+		//	- (settings::tightness_weight / settings::h_shift_limit) * m_max_h_shift_proportion + 0.5 * settings::tightness_weight // Add half of tightness_weight to center it on 0
+		//	- m_non_invertible_voice_pairs_proportion * settings::invertibility_weight
+		//	- m_invalid_outer_voice_pairs_proportion * settings::outer_voice_weight;
+		//return m_quality_score;
 	}
 
 private:

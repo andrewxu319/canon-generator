@@ -13,8 +13,10 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <cmath>
 #include <algorithm>
+#include <functional>
 
 //#define DEBUG
 //#define SINGLE_SHIFT_CHECK
@@ -300,7 +302,7 @@ const Voice shift(Voice voice, const int v_shift, const int h_shift, const std::
 	}
 
 	//for (mx::api::NoteData& note : voice) {
-	//	note.pitchData.octave += settings::octave_shift;
+	//	note.pitchData.octave += settings.octave_shift;
 	//}
 
 	return voice;
@@ -433,17 +435,17 @@ const ScaleDegree get_tonic(const int fifths, const bool minor_key) {
 	return ScaleDegree{ static_cast<mx::api::Step>(step), alter };
 }
 
-std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_canons_array, const Voice& leader, const int leader_length_ticks, const int ticks_per_measure, const int ticks_per_beat, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::vector<int>& key_signature, const Key& key, const bool minor_key, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest) {
+std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_canons_array, const Voice& leader, const int leader_length_ticks, const int ticks_per_measure, const int ticks_per_beat, const std::vector<int>& rhythmic_hierarchy_array, const int rhythmic_hierarchy_max_depth, const int rhythmic_hierarchy_of_beat, const std::vector<int>& key_signature, const Key& key, const bool minor_key, const mx::api::TimeSignatureData& time_signature, const mx::api::NoteData& measure_long_rest, const Settings& settings) {
 	std::vector<Canon> valid_canons_for_current_voice{};
 
 	// Maximum h_shift increment because tick sizes are unpredictable for some reason
-	const int h_shift_increment{ std::max(1, ticks_per_beat / settings::h_shift_increments_per_beat) }; // DO THIS ONCE AND DONT LOOP
+	const int h_shift_increment{ std::max(1, ticks_per_beat / settings.h_shift_increments_per_beat) }; // DO THIS ONCE AND DONT LOOP
 	
 	for (Canon& template_canon : template_canons_array) {
 
 #ifndef SINGLE_SHIFT_CHECK
-		for (int h_shift{ template_canon.get_max_h_shift() + h_shift_increment }; h_shift < leader_length_ticks * settings::h_shift_limit; h_shift += h_shift_increment) {
-			// settings::leader_length_ticks
+		for (int h_shift{ template_canon.get_max_h_shift() + h_shift_increment }; h_shift < leader_length_ticks * settings.h_shift_limit; h_shift += h_shift_increment) {
+			// settings.leader_length_ticks
 
 			for (int v_shift{ 0 }; v_shift >= -6; --v_shift) {
 #endif // SINGLE_SHIFT_CHECK
@@ -458,7 +460,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 
 				// Create follower (LOOP THIS)
 				// TEMPORARY
-				const double max_h_shift_proportion{ static_cast<double>(h_shift) / leader_length_ticks }; // settings::leader_length_ticks
+				const double max_h_shift_proportion{ static_cast<double>(h_shift) / leader_length_ticks }; // settings.leader_length_ticks
 				Canon canon{ template_canon.texture(), h_shift, max_h_shift_proportion };
 				const Voice follower{ shift(leader, v_shift, h_shift, key_signature, key, minor_key, ticks_per_measure, time_signature) }; // const
 				canon.add_voice(follower);
@@ -471,7 +473,7 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 				}
 
 				// Check counterpoint
-				check_counterpoint(canon, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat);
+				check_counterpoint(canon, ticks_per_measure, key, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, settings);
 				// This will change member variables in canon
 
 #ifdef SINGLE_SHIFT_CHECK
@@ -479,8 +481,8 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 #endif // SINGLE_SHIFT_CHECK
 
 #ifndef SINGLE_SHIFT_CHECK
-				//const double score{ errors_count + settings::warning_weight * warnings_count }; // Not sure when you would need to use this
-				if (canon.get_error_count() > 0 || canon.get_warning_count() > settings::warning_threshold) {
+				//const double score{ errors_count + settings.warning_weight * warnings_count }; // Not sure when you would need to use this
+				if (canon.get_error_count() > 0 || canon.get_warning_count() > settings.warning_threshold) {
 #ifdef DEBUG
 					//std::cout << "Canon rejected! At h_shift = " << h_shift << ", v_shift = " << v_shift << "\n\n";
 #endif // DEBUG
@@ -501,20 +503,105 @@ std::vector<Canon> generate_canons_for_new_voice(std::vector<Canon>& template_ca
 	return valid_canons_for_current_voice;
 }
 
-int main() {
+typedef std::function<void(Settings&, const std::string&)> OneArgHandle;
+
+const std::unordered_map<std::string, OneArgHandle> cmd_args{
+	{"-i", [](Settings& settings, const std::string& arg) {
+	  settings.input_file = arg;
+	}},
+	{"--input", [](Settings& settings, const std::string& arg) {
+	  settings.input_file = arg;
+	}},
+
+	{"-o", [](Settings& settings, const std::string& arg) {
+	  settings.output_file = arg;
+	}},
+	{"--output", [](Settings& settings, const std::string& arg) {
+	  settings.output_file = arg;
+	}},
+
+	{"-m", [](Settings& settings, const std::string& arg) {
+	  settings.minor_key = ((arg == "true" || arg == "True") ? true : false);
+	}},
+	{"--minor", [](Settings& settings, const std::string& arg) {
+	  settings.minor_key = ((arg == "true" || arg == "True") ? true : false);
+	}},
+
+	{"-v", [](Settings& settings, const std::string& arg) {
+	  settings.max_voices = std::stoi(arg);
+	}},
+	{"--voices", [](Settings& settings, const std::string& arg) {
+	  settings.max_voices = std::stoi(arg);
+	}},
+
+	{"-n", [](Settings& settings, const std::string& arg) {
+	  settings.h_shift_increments_per_beat = std::stoi(arg);
+	}},
+	{"--shift-increment", [](Settings& settings, const std::string& arg) {
+	  settings.h_shift_increments_per_beat = std::stoi(arg);
+	}},
+
+	{"-l", [](Settings& settings, const std::string& arg) {
+	  settings.h_shift_limit = std::stod(arg);
+	}},
+	{"--shift-limit", [](Settings& settings, const std::string& arg) {
+	  settings.h_shift_limit = std::stod(arg);
+	}},
+
+	{"-s", [](Settings& settings, const std::string& arg) {
+	  settings.measures_separation_between_output_canons = std::stoi(arg);
+	}},
+	{"--separation", [](Settings& settings, const std::string& arg) {
+	  settings.measures_separation_between_output_canons = std::stoi(arg);
+	}},
+
+	{"-w", [](Settings& settings, const std::string& arg) {
+	  settings.warning_threshold = static_cast<int>(std::stoi(arg));
+	}},
+	{"--warning-threshold", [](Settings& settings, const std::string& arg) {
+	  settings.warning_threshold = static_cast<int>(std::stoi(arg));
+	}},
+};
+
+int main(int argc, char* argv[]) {
 	try {
+		Settings settings{};
+
+		for (int i{ 1 }; i < argc; ++i) {
+			// Start at 1 because 0 is exe path
+			std::string option{ argv[i] };
+
+			if (option == "-h" || option == "--help") {
+				std::cout << help_message;
+				return 0;
+			}
+
+			if (auto k{ cmd_args.find(option) }; k != cmd_args.end())
+				// Yes, do we have a parameter?
+				if (++i < argc) {
+					// Yes, handle it!
+					k->second(settings, { argv[i] });
+				}
+				else {
+					// No, and we cannot continue, throw an error
+					throw std::runtime_error{ "missing param after " + option };
+				}
+			else
+				std::cerr << "unrecognized command-line option " << option << std::endl;
+		}
+
 		// Read file
-		const std::string& xml{ read_file(settings::read_file_path) };
+		const std::string& xml{ read_file(settings.input_file) };
 		const mx::api::ScoreData& score{ get_score_object(xml) };
 		const Voice leader{ create_voice_array(score) };
 
 		// Key signature
 		const int fifths{ (score.parts.at(0).measures.at(0).keys.size() > 0) ? score.parts.at(0).measures.at(0).keys.at(0).fifths : 0 };
-		const bool minor_key{ settings::minor_key };
+		const bool minor_key{ settings.minor_key };
 		const std::vector<int> key_signature{ alters_by_key(fifths) };
 
 		// Scale degrees
-		const ScaleDegree tonic{ get_tonic(fifths, settings::minor_key) };
+		const ScaleDegree tonic{ get_tonic(fifths, settings.minor_key) };
 		const int tonic_step{ static_cast<int>(tonic.step) };
 		const int dominant_step{ (tonic_step + 4) % 7 };
 		const ScaleDegree dominant{ static_cast<mx::api::Step>(dominant_step), alters_by_key(fifths).at(dominant_step) + 1 };
@@ -567,8 +654,8 @@ int main() {
 		std::vector<Canon> valid_canons{};
 		std::vector<Canon> template_canons_array{ Canon{std::vector<Voice>{leader}, 0, 0 } };
 
-		for (int i{ 0 }; i < settings::max_voices - 1; ++i) {
-			const std::vector<Canon> valid_canons_for_current_voice{ generate_canons_for_new_voice(template_canons_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, key, minor_key, time_signature, measure_long_rest) };
+		for (int i{ 0 }; i < settings.max_voices - 1; ++i) {
+			const std::vector<Canon> valid_canons_for_current_voice{ generate_canons_for_new_voice(template_canons_array, leader, leader_length_ticks, ticks_per_measure, ticks_per_beat, rhythmic_hierarchy_array, rhythmic_hierarchy_max_depth, rhythmic_hierarchy_of_beat, key_signature, key, minor_key, time_signature, measure_long_rest, settings) };
 			template_canons_array = valid_canons_for_current_voice;
 
 			valid_canons.reserve(valid_canons.size() + valid_canons_for_current_voice.size());
@@ -593,14 +680,14 @@ int main() {
 		// Get various scores
 
 		// Generate output musicxml
-		std::vector<mx::api::PartData> valid_canons_parts_sequence(settings::max_voices);
+		std::vector<mx::api::PartData> valid_canons_parts_sequence(settings.max_voices);
 		for (Canon& canon : valid_canons) {
 			// Create musicxml
 			const mx::api::PartData& leader_part{ score.parts.at(0) };
 
-			std::vector<mx::api::PartData> parts_array(settings::max_voices);
+			std::vector<mx::api::PartData> parts_array(settings.max_voices);
 			parts_array.at(0) = leader_part;
-			for (int i{ 1 }; i < settings::max_voices; ++i) { // Skip first because first is leader part
+			for (int i{ 1 }; i < settings.max_voices; ++i) { // Skip first because first is leader part
 				if (i >= canon.texture().size()) {
 					canon.add_voice(Voice{});
 					for (int j{ 0 }; j < 2 * leader_length_measures; ++j) {
@@ -626,13 +713,13 @@ int main() {
 			parts_array.at(0).measures.at(0).staves.at(0).directions.emplace_back(create_canon_label(canon));
 
 			// Push parts in canon into final valid_canons_parts_sequence
-			for (int part{ 0 }; part < settings::max_voices; ++part) {
+			for (int part{ 0 }; part < settings.max_voices; ++part) {
 				for (const mx::api::MeasureData& measure : parts_array.at(part).measures) {
 					// For each part, add each note to valid_canons_sequence
 					valid_canons_parts_sequence.at(part).measures.emplace_back(measure);
 				}
 				valid_canons_parts_sequence.at(part).measures.back().barlines.push_back(double_barline);
-				for (int i{ 0 }; i < settings::measures_separation_between_output_canons; ++i) {
+				for (int i{ 0 }; i < settings.measures_separation_between_output_canons; ++i) {
 					valid_canons_parts_sequence.at(part).measures.emplace_back(empty_measure);
 				}
 			}
@@ -662,13 +749,11 @@ int main() {
 		double h_shift_sum{};
 		double invertibility_sum{};
 		double outer_voice_pairs_sum{};
-		double quality_scores_sum{};
 		for (Canon& canon : valid_canons) {
 			warnings_sum += canon.get_warning_count();
 			h_shift_sum += canon.get_max_h_shift();
 			invertibility_sum += canon.get_non_invertible_voice_pairs_proportion();
 			outer_voice_pairs_sum += canon.get_invalid_outer_voice_pairs_proportion();
-			quality_scores_sum += canon.get_quality_score();
 		}
 
 		mx::api::WordsData words{};
@@ -689,7 +774,7 @@ int main() {
 		const mx::api::ScoreData output_score{ create_output_score(score, valid_canons_parts_sequence) }; // add follower(s) to original score
 
 		//// Write file
-		write_file(output_score, settings::write_file_path); // output_score
+		write_file(output_score, settings.output_file); // output_score
 	}
 	catch (const Exception& exception) {
 		std::cout << exception.getError();

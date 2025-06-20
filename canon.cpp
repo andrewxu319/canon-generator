@@ -17,8 +17,8 @@ void print_messages(Canon& canon) {
 	}
 }
 
-void print_results(Canon& canon) {
-	if (canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings::warning_threshold) {
+void print_results(Canon& canon, const Settings& settings) {
+	if (canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings.warning_threshold) {
 		// Summary
 		std::cout << "\n\n";
 		//std::cout << "Canon is " << ((canon.error_message_box().size() == 0 && canon.warning_message_box().size() <= settings::warning_threshold) ? "valid\n" : "invalid\n");
